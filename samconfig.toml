@@ -1,0 +1,15 @@
+# SAM 部署默认配置
+# 换 AWS 账号时：只改下面的 profile 一行（账号无关设计）
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "alter-poc"
+region = "us-east-1"
+profile = "alter-dev"
+resolve_s3 = true
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = false
+parameter_overrides = "BedrockModelId=us.anthropic.claude-haiku-4-5-20251001-v1:0"
+
+[default.build.parameters]
+cached = true

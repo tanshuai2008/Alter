@@ -1,0 +1,36 @@
+# ── 密钥 / 凭证（绝不提交）──────────────────────────
+# 真实配置含 AWS 密钥；只提交 config.example.env 模板
+.env
+*.env
+!config.example.env
+# AWS 凭证文件（以防万一被放进项目）
+.aws/
+credentials
+*.pem
+*.key
+
+# ── SAM / 构建产物（可重新生成，不入库）──────────────
+.aws-sam/
+samconfig-local.toml
+
+# ── 临时输出文件（本次调试产生的）────────────────────
+response.json
+scan_raw.json
+fetch_out.json
+last_draft.txt
+_check_feeds*.py
+_read_draft.py
+
+# ── Python 缓存 ──────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ── 操作系统 / 编辑器杂项 ─────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/

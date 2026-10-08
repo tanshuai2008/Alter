@@ -1,0 +1,2 @@
+# Lambda 运行时(python3.13)已自带 boto3，无需额外依赖。
+# 第二步接入 RSS 抓取时，在这里加 feedparser 等依赖。

@@ -1,0 +1,138 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Alter POC —— 最小云端闭环：
+  Lambda 调用 Bedrock(Claude Haiku) 生成评论草稿，存入 DynamoDB（状态=待审）。
+  绝不自动发布。
+
+# ── 可调参数（换模型/风格只改这里，不动代码）──────────────
+Parameters:
+  BedrockModelId:
+    Type: String
+    Default: us.anthropic.claude-haiku-4-5-20251001-v1:0
+    Description: 用于生成草稿的 Bedrock 模型 ID（inference profile，跨区推理）
+  CommentTone:
+    Type: String
+    Default: 专业、有见地、简洁，像一个懂行的从业者在真诚评论
+  CommentMaxWords:
+    Type: String
+    Default: "80"
+  WaterTierOnly:
+    Type: String
+    Default: "true"
+    Description: 抓取时是否只处理水务子集（water_tier=true）。先跑通水务，再改 false 抓全部 15 家
+  FetchSchedule:
+    Type: String
+    Default: cron(0 13 * * ? *)
+    Description: EventBridge 定时表达式（UTC）。默认每天 UTC 13:00 ≈ 美东早上，抓一次
+
+# ── 全局默认（所有函数共享）──────────────────────────────
+Globals:
+  Function:
+    Runtime: python3.13
+    Timeout: 60
+    MemorySize: 256
+    Architectures:
+      - x86_64
+
+Resources:
+  # DynamoDB：存草稿和审核状态，按量计费（空闲几乎不花钱）
+  DraftsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: alter-drafts
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  # Lambda：生成草稿
+  DraftGeneratorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: alter-draft-generator
+      CodeUri: functions/draft_generator/
+      Handler: app.lambda_handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref DraftsTable
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+          COMMENT_TONE: !Ref CommentTone
+          COMMENT_MAX_WORDS: !Ref CommentMaxWords
+      Policies:
+        # 只给够用的权限：读写这张表 + 调用 Bedrock 模型
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DraftsTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: "*"
+
+  # DynamoDB：去重表，记录已处理过的 RSS 条目（按 TTL 自动清理旧记录）
+  SeenTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: alter-seen-entries
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: entry_key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: entry_key
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # Lambda：抓 RSS -> 去重 -> 生成草稿（每天由 EventBridge 定时触发）
+  FetcherFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: alter-fetcher
+      CodeUri: functions/fetcher/
+      Handler: app.lambda_handler
+      Timeout: 300        # 抓多个源 + 多次调模型，给足时间
+      MemorySize: 512
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref DraftsTable
+          SEEN_TABLE_NAME: !Ref SeenTable
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+          COMMENT_TONE: !Ref CommentTone
+          COMMENT_MAX_WORDS: !Ref CommentMaxWords
+          WATER_TIER_ONLY: !Ref WaterTierOnly
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DraftsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SeenTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: "*"
+      Events:
+        DailyFetch:
+          Type: Schedule
+          Properties:
+            Schedule: !Ref FetchSchedule
+            Description: 每天抓一次关注对象的新闻并生成草稿
+            Enabled: true
+
+Outputs:
+  TableName:
+    Description: 存草稿的 DynamoDB 表名
+    Value: !Ref DraftsTable
+  FunctionName:
+    Description: 草稿生成 Lambda 的名字（手动触发时用）
+    Value: !Ref DraftGeneratorFunction
+  FetcherFunctionName:
+    Description: RSS 抓取 Lambda 的名字（手动触发测试时用）
+    Value: !Ref FetcherFunction
+  SeenTableName:
+    Description: 去重表名
+    Value: !Ref SeenTable
