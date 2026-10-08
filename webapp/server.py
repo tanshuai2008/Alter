@@ -36,6 +36,7 @@ PORT = int(os.environ.get("ALTER_WEB_PORT", "8765"))
 _HERE = os.path.dirname(os.path.abspath(__file__))
 # feeds.json 由 fetcher 和网页共享，放在 functions/fetcher 下
 _FEEDS_PATH = os.path.join(_HERE, "..", "functions", "fetcher", "feeds.json")
+_PERSONAS_PATH = os.path.join(_HERE, "..", "functions", "fetcher", "personas.json")
 
 # 用指定 profile 建 session（账号无关设计）
 _session = boto3.Session(profile_name=PROFILE, region_name=REGION)
@@ -62,6 +63,27 @@ def all_topics() -> list:
         for t in feed.get("topics", []):
             topics.add(t)
     return sorted(topics)
+
+
+# ── personas.json 读写 ──────────────────────────────────
+def load_personas_file() -> dict:
+    if not os.path.exists(_PERSONAS_PATH):
+        return {"personas": []}
+    with open(_PERSONAS_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_personas_file(data: dict):
+    with open(_PERSONAS_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _slug(name: str) -> str:
+    """从名字生成一个 id（无合适字符时用时间戳兜底）。"""
+    import re
+    import time as _t
+    s = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+    return s or f"persona_{int(_t.time())}"
 
 
 # ── DynamoDB 草稿读写 ───────────────────────────────────
@@ -107,11 +129,13 @@ def update_status(draft_id: str, status: str):
 
 
 # ── 手动触发抓取 ────────────────────────────────────────
-def trigger_fetch(topics=None) -> dict:
-    """同步调用 fetcher Lambda。topics 为空则抓全部。"""
+def trigger_fetch(topics=None, persona=None) -> dict:
+    """同步调用 fetcher Lambda。topics 为空则抓全部；persona 为口吻 id。"""
     payload = {}
     if topics:
         payload["topics"] = topics
+    if persona:
+        payload["persona"] = persona
     resp = _lambda.invoke(
         FunctionName=FETCHER_FUNCTION,
         InvocationType="RequestResponse",
@@ -171,6 +195,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json(load_feeds_file().get("feeds", []))
             elif path == "/api/topics":
                 self._send_json(all_topics())
+            elif path == "/api/personas":
+                self._send_json(load_personas_file().get("personas", []))
             else:
                 self._send_json({"error": "not found"}, 404)
         except Exception as e:  # noqa: BLE001
@@ -197,20 +223,50 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json({"ok": True})
             elif path == "/api/fetch":
                 topics = body.get("topics") or None
-                self._send_json(trigger_fetch(topics=topics))
+                persona = body.get("persona") or None
+                self._send_json(trigger_fetch(topics=topics, persona=persona))
+            elif path == "/api/personas":
+                # 新增或编辑：有 id 则覆盖同 id，否则按 name 生成 id 新增
+                data = load_personas_file()
+                plist = data.setdefault("personas", [])
+                pid = body.get("id") or _slug(body.get("name", ""))
+                samples = [s for s in body.get("samples", []) if str(s).strip()]
+                entry = {
+                    "id": pid,
+                    "name": body.get("name", pid),
+                    "style": body.get("style", ""),
+                    "samples": samples,
+                }
+                for i, p in enumerate(plist):
+                    if p.get("id") == pid:
+                        plist[i] = entry
+                        break
+                else:
+                    plist.append(entry)
+                save_personas_file(data)
+                self._send_json({"ok": True, "id": pid})
             else:
                 self._send_json({"error": "not found"}, 404)
         except Exception as e:  # noqa: BLE001
             self._send_json({"error": f"{type(e).__name__}: {e}"}, 500)
 
     def do_DELETE(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
         body = self._read_body()
         try:
-            data = load_feeds_file()
-            name = body.get("name")
-            data["feeds"] = [f for f in data.get("feeds", []) if f.get("name") != name]
-            save_feeds_file(data)
-            self._send_json({"ok": True})
+            if path == "/api/personas":
+                data = load_personas_file()
+                pid = body.get("id")
+                data["personas"] = [p for p in data.get("personas", []) if p.get("id") != pid]
+                save_personas_file(data)
+                self._send_json({"ok": True})
+            else:  # /api/feeds
+                data = load_feeds_file()
+                name = body.get("name")
+                data["feeds"] = [f for f in data.get("feeds", []) if f.get("name") != name]
+                save_feeds_file(data)
+                self._send_json({"ok": True})
         except Exception as e:  # noqa: BLE001
             self._send_json({"error": f"{type(e).__name__}: {e}"}, 500)
 

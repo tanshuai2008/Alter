@@ -57,8 +57,10 @@
 <header>
   <h1>🪞 Alter 待审草稿</h1>
   <div class="chips" id="topicChips"></div>
+  <select id="personaSel" title="抓取时模仿的口吻" style="padding:6px 8px;border-radius:8px;background:var(--panel2);color:var(--text);border:1px solid var(--border);font-size:13px;"></select>
   <button class="primary" id="btnFetch">⟳ 手动抓取</button>
   <div class="spacer"></div>
+  <button id="btnPersona">管理口吻</button>
   <button id="btnManage">管理关注对象</button>
   <button id="btnRefresh">刷新列表</button>
 </header>
@@ -78,6 +80,23 @@
     <div class="dlg-actions">
       <button id="nfAdd" class="good">添加</button>
       <button id="mgClose">关闭</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="personaDlg">
+  <div class="dlg-body">
+    <h3>管理口吻（模仿高管写作风格）</h3>
+    <div id="personaList" style="max-height:220px;overflow-y:auto;"></div>
+    <h3 style="margin-top:20px;font-size:14px;">新增 / 编辑一个口吻</h3>
+    <label>口吻名称</label><input id="pName" placeholder="例如 水务CEO风">
+    <label>风格说明（一句话描述这个口吻的特点）</label>
+    <input id="pStyle" placeholder="从宏观趋势切入，自信有力，结尾常带号召">
+    <label>范文（每篇一段，用空行分隔；2~4 篇最佳）</label>
+    <textarea id="pSamples" rows="6" placeholder="把收集到的高管公开帖子正文贴这里，一篇一段，中间空一行隔开" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px;resize:vertical;"></textarea>
+    <div class="dlg-actions">
+      <button id="pSave" class="good">保存口吻</button>
+      <button id="pClose">关闭</button>
     </div>
   </div>
 </dialog>
@@ -140,7 +159,7 @@ function renderDetail(){
     <h2>${esc(d.title||"(无标题)")}</h2>
     ${d.url ? `<a href="${esc(d.url)}" target="_blank">↗ 打开原文</a>` : ""}
     <div class="card">
-      <h3>AI 生成的评论草稿（英文 + 中文）</h3>
+      <h3>AI 生成的评论草稿（英文 + 中文）${d.persona ? ' · 口吻：'+esc(d.persona) : ''}</h3>
       <div class="draft" id="draftText">${esc(d.draft||"")}</div>
     </div>
     <div class="actions">
@@ -164,10 +183,66 @@ async function doFetch(){
   btn.disabled = true; btn.textContent = "抓取中…（约1分钟）";
   const body = {};
   if(activeTopics.size) body.topics = [...activeTopics];
+  const persona = document.getElementById("personaSel").value;
+  if(persona && persona !== "default") body.persona = persona;
   const r = await api.post("/api/fetch", body);
   btn.disabled = false; btn.textContent = "⟳ 手动抓取";
   if(r.error){ toast("抓取出错："+r.error); }
   else { toast(`抓取完成：新增 ${r.new_drafts||0} 条草稿`); loadDrafts(); loadTopics(); }
+}
+
+// ── 口吻 persona ──
+async function loadPersonas(){
+  const list = await api.get("/api/personas");
+  const sel = document.getElementById("personaSel");
+  const cur = sel.value;
+  sel.innerHTML = "";
+  list.forEach(p=>{
+    const o = document.createElement("option");
+    o.value = p.id; o.textContent = "口吻：" + p.name;
+    sel.appendChild(o);
+  });
+  if([...sel.options].some(o=>o.value===cur)) sel.value = cur;
+  return list;
+}
+async function openPersona(){
+  const list = await loadPersonas();
+  const box = document.getElementById("personaList");
+  box.innerHTML = "";
+  list.forEach(p=>{
+    const row = document.createElement("div");
+    row.className = "feed-row";
+    row.innerHTML = `<span class="fn">${esc(p.name)}</span><span class="ft">${(p.samples||[]).length} 篇范文</span>`;
+    const edit = document.createElement("button");
+    edit.textContent = "编辑";
+    edit.onclick = ()=>{
+      document.getElementById("pName").value = p.name;
+      document.getElementById("pStyle").value = p.style||"";
+      document.getElementById("pSamples").value = (p.samples||[]).join("\n\n");
+      document.getElementById("pSave").dataset.id = p.id;
+    };
+    row.appendChild(edit);
+    if(p.id !== "default"){
+      const del = document.createElement("button");
+      del.textContent = "删除"; del.style.borderColor="var(--danger)"; del.style.color="var(--danger)";
+      del.onclick = async ()=>{ await api.del("/api/personas",{id:p.id}); openPersona(); toast("已删除"); };
+      row.appendChild(del);
+    }
+    box.appendChild(row);
+  });
+  document.getElementById("personaDlg").showModal();
+}
+async function savePersona(){
+  const name = document.getElementById("pName").value.trim();
+  const style = document.getElementById("pStyle").value.trim();
+  const samplesRaw = document.getElementById("pSamples").value.trim();
+  const samples = samplesRaw ? samplesRaw.split(/\n\s*\n/).map(s=>s.trim()).filter(Boolean) : [];
+  if(!name){ toast("口吻名称不能为空"); return; }
+  const id = document.getElementById("pSave").dataset.id || "";
+  await api.post("/api/personas", {id, name, style, samples});
+  document.getElementById("pName").value=""; document.getElementById("pStyle").value=""; document.getElementById("pSamples").value="";
+  document.getElementById("pSave").dataset.id = "";
+  openPersona(); loadPersonas(); toast("口吻已保存");
 }
 
 // ── 关注对象管理 ──
@@ -205,8 +280,11 @@ document.getElementById("btnRefresh").onclick = ()=>{ loadDrafts(); loadTopics()
 document.getElementById("btnManage").onclick = openManage;
 document.getElementById("mgClose").onclick = ()=> document.getElementById("manageDlg").close();
 document.getElementById("nfAdd").onclick = addFeed;
+document.getElementById("btnPersona").onclick = openPersona;
+document.getElementById("pClose").onclick = ()=> document.getElementById("personaDlg").close();
+document.getElementById("pSave").onclick = savePersona;
 
-loadTopics(); loadDrafts();
+loadTopics(); loadDrafts(); loadPersonas();
 </script>
 </body>
 </html>

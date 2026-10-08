@@ -87,13 +87,48 @@ def mark_seen(key: str):
     _seen.put_item(Item={"entry_key": key, "ttl": int(time.time()) + SEEN_TTL_SECONDS})
 
 
-def build_prompt(post: dict) -> str:
+def load_persona(persona_id=None) -> dict:
+    """按 id 读取口吻档案；找不到或为 default 时返回 None（走通用口吻）。"""
+    if not persona_id or persona_id == "default":
+        return None
+    path = os.path.join(_HERE, "personas.json")
+    if not os.path.exists(path):
+        return None
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    for p in data.get("personas", []):
+        if p.get("id") == persona_id:
+            return p
+    return None
+
+
+def persona_block(persona: dict) -> str:
+    """把口吻的风格说明 + 范文拼成一段 few-shot 示范，插入提示词。"""
+    if not persona:
+        return ""
+    lines = [
+        "\nIMPORTANT — Mimic the following author's VOICE and writing style "
+        "(tone, sentence rhythm, vocabulary, how they open and close). "
+        "Learn the STYLE only; do not copy their sentences or claim their opinions.",
+        f"Style notes: {persona.get('style', '')}",
+    ]
+    samples = [s for s in persona.get("samples", []) if s.strip()]
+    if samples:
+        lines.append("Reference posts written by this author (style samples):")
+        for i, s in enumerate(samples, 1):
+            lines.append(f"[Sample {i}] {s}")
+    return "\n".join(lines) + "\n"
+
+
+def build_prompt(post: dict, persona: dict = None) -> str:
+    style_line = persona.get("style") if persona else COMMENT_TONE
     return (
         f"You are a practitioner with real, in-depth insight in the relevant field. "
         f"Write a social-media comment draft on the item below. "
-        f"Style: {COMMENT_TONE}. Have a concrete point of view; no empty pleasantries; "
-        f"no obvious AI tone.\n\n"
-        f"Output EXACTLY two paragraphs, in this order:\n"
+        f"Style: {style_line}. Have a concrete point of view; no empty pleasantries; "
+        f"no obvious AI tone.\n"
+        f"{persona_block(persona)}"
+        f"\nOutput EXACTLY two paragraphs, in this order:\n"
         f"1) First an ENGLISH paragraph (<= {COMMENT_MAX_WORDS} words).\n"
         f"2) Then a blank line, then a SIMPLIFIED CHINESE paragraph that conveys the "
         f"same point (not a word-for-word translation; natural Chinese, <= {COMMENT_MAX_WORDS} 字).\n"
@@ -105,18 +140,18 @@ def build_prompt(post: dict) -> str:
     )
 
 
-def generate_draft(post: dict) -> str:
+def generate_draft(post: dict, persona: dict = None) -> str:
     body = {
         "anthropic_version": "bedrock-2023-05-31",
         "max_tokens": 600,
-        "messages": [{"role": "user", "content": build_prompt(post)}],
+        "messages": [{"role": "user", "content": build_prompt(post, persona)}],
     }
     resp = _bedrock.invoke_model(modelId=MODEL_ID, body=json.dumps(body))
     payload = json.loads(resp["body"].read())
     return payload["content"][0]["text"].strip()
 
 
-def save_draft(source_name: str, entry, draft: str):
+def save_draft(source_name: str, entry, draft: str, persona_name: str = ""):
     _table.put_item(
         Item={
             "id": str(uuid.uuid4()),
@@ -125,18 +160,24 @@ def save_draft(source_name: str, entry, draft: str):
             "title": getattr(entry, "title", ""),
             "url": getattr(entry, "link", ""),
             "draft": draft,
+            "persona": persona_name,  # 本条草稿用的口吻（空=通用）
             "status": "PENDING_REVIEW",  # 待真人审核 —— 永不自动发布
         }
     )
 
 
 def lambda_handler(event, context):
-    # 事件可带 topics 列表（网页手动抓取时按标签只抓某些源）
+    # 事件可带 topics 列表（按标签只抓某些源）和 persona（口吻 id）
     topics = None
+    persona_id = None
     if isinstance(event, dict):
         topics = event.get("topics") or None
+        persona_id = event.get("persona") or None
+    persona = load_persona(persona_id)
+    persona_name = persona.get("name", "") if persona else ""
     feeds = load_feeds(topics=topics)
-    stats = {"feeds": len(feeds), "new_drafts": 0, "skipped": 0, "errors": []}
+    stats = {"feeds": len(feeds), "new_drafts": 0, "skipped": 0,
+             "persona": persona_name or "通用", "errors": []}
 
     for feed in feeds:
         name, url = feed["name"], feed["url"]
@@ -167,8 +208,8 @@ def lambda_handler(event, context):
                 "url": getattr(entry, "link", ""),
             }
             try:
-                draft = generate_draft(post)
-                save_draft(name, entry, draft)
+                draft = generate_draft(post, persona)
+                save_draft(name, entry, draft, persona_name)
                 mark_seen(key)
                 stats["new_drafts"] += 1
                 count += 1
