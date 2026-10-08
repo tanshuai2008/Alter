@@ -1,0 +1,231 @@
+"""
+Alter —— 本地待审网页后端（路线 A）
+
+一个零额外依赖的本地服务器（Python 标准库 + boto3），负责：
+  1. 托管网页界面（index.html）
+  2. 提供 JSON API：
+     - GET  /api/drafts            列出草稿（可按 ?status= / ?topics= 筛选）
+     - POST /api/drafts/status     更新一条草稿的状态（已发/忽略/待审）
+     - GET  /api/feeds             列出关注对象（含标签）
+     - POST /api/feeds             新增一个关注对象
+     - DELETE /api/feeds           删除一个关注对象
+     - GET  /api/topics            列出所有已用过的标签
+     - POST /api/fetch             手动触发抓取（可选 ?topics= 只抓某些标签）
+
+安全：只绑定 127.0.0.1（本机），不对公网暴露。关电脑即停。
+用法：在 Alter 目录开 PowerShell，运行 run.ps1，浏览器自动开 http://127.0.0.1:8765
+"""
+
+import json
+import os
+import threading
+import webbrowser
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse, parse_qs
+
+import boto3
+from boto3.dynamodb.conditions import Attr
+
+# ── 配置（与项目其余部分一致）────────────────────────────
+REGION = os.environ.get("AWS_REGION", "us-east-1")
+PROFILE = os.environ.get("ALTER_PROFILE", "alter-dev")
+DRAFTS_TABLE = os.environ.get("TABLE_NAME", "alter-drafts")
+FETCHER_FUNCTION = os.environ.get("FETCHER_FUNCTION", "alter-fetcher")
+PORT = int(os.environ.get("ALTER_WEB_PORT", "8765"))
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+# feeds.json 由 fetcher 和网页共享，放在 functions/fetcher 下
+_FEEDS_PATH = os.path.join(_HERE, "..", "functions", "fetcher", "feeds.json")
+
+# 用指定 profile 建 session（账号无关设计）
+_session = boto3.Session(profile_name=PROFILE, region_name=REGION)
+_dynamodb = _session.resource("dynamodb")
+_drafts = _dynamodb.Table(DRAFTS_TABLE)
+_lambda = _session.client("lambda")
+
+
+# ── feeds.json 读写 ─────────────────────────────────────
+def load_feeds_file() -> dict:
+    with open(_FEEDS_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_feeds_file(data: dict):
+    with open(_FEEDS_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def all_topics() -> list:
+    data = load_feeds_file()
+    topics = set()
+    for feed in data.get("feeds", []):
+        for t in feed.get("topics", []):
+            topics.add(t)
+    return sorted(topics)
+
+
+# ── DynamoDB 草稿读写 ───────────────────────────────────
+def list_drafts(status=None, topics=None) -> list:
+    """全表扫描草稿（POC 数据量小，scan 足够）。可按状态和标签筛选。"""
+    scan_kwargs = {}
+    if status:
+        scan_kwargs["FilterExpression"] = Attr("status").eq(status)
+    items = []
+    resp = _drafts.scan(**scan_kwargs)
+    items.extend(resp.get("Items", []))
+    while "LastEvaluatedKey" in resp:
+        scan_kwargs["ExclusiveStartKey"] = resp["LastEvaluatedKey"]
+        resp = _drafts.scan(**scan_kwargs)
+        items.extend(resp.get("Items", []))
+
+    # 若按标签筛选：用 feeds.json 把 author -> topics 映射出来，再过滤
+    if topics:
+        topic_set = set(topics)
+        author_topics = {}
+        for feed in load_feeds_file().get("feeds", []):
+            author_topics[feed["name"]] = set(feed.get("topics", []))
+        items = [
+            it for it in items
+            if author_topics.get(it.get("author", ""), set()) & topic_set
+        ]
+
+    # Decimal -> int，按时间倒序
+    for it in items:
+        if "created_at" in it:
+            it["created_at"] = int(it["created_at"])
+    items.sort(key=lambda x: x.get("created_at", 0), reverse=True)
+    return items
+
+
+def update_status(draft_id: str, status: str):
+    _drafts.update_item(
+        Key={"id": draft_id},
+        UpdateExpression="SET #s = :s",
+        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeValues={":s": status},
+    )
+
+
+# ── 手动触发抓取 ────────────────────────────────────────
+def trigger_fetch(topics=None) -> dict:
+    """同步调用 fetcher Lambda。topics 为空则抓全部。"""
+    payload = {}
+    if topics:
+        payload["topics"] = topics
+    resp = _lambda.invoke(
+        FunctionName=FETCHER_FUNCTION,
+        InvocationType="RequestResponse",
+        Payload=json.dumps(payload).encode("utf-8"),
+    )
+    raw = resp["Payload"].read().decode("utf-8")
+    try:
+        return json.loads(raw)
+    except Exception:  # noqa: BLE001
+        return {"raw": raw}
+
+
+# ── HTTP 处理 ───────────────────────────────────────────
+class Handler(BaseHTTPRequestHandler):
+    def _send_json(self, obj, code=200):
+        body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_file(self, path, ctype):
+        with open(path, "rb") as f:
+            body = f.read()
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _read_body(self) -> dict:
+        length = int(self.headers.get("Content-Length", 0))
+        if length == 0:
+            return {}
+        raw = self.rfile.read(length).decode("utf-8")
+        try:
+            return json.loads(raw)
+        except Exception:  # noqa: BLE001
+            return {}
+
+    def log_message(self, *args):  # 静音默认日志
+        pass
+
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
+        qs = parse_qs(parsed.query)
+        try:
+            if path == "/" or path == "/index.html":
+                self._send_file(os.path.join(_HERE, "index.html"), "text/html; charset=utf-8")
+            elif path == "/api/drafts":
+                status = (qs.get("status") or [None])[0]
+                topics = qs.get("topics")  # list 或 None
+                self._send_json(list_drafts(status=status, topics=topics))
+            elif path == "/api/feeds":
+                self._send_json(load_feeds_file().get("feeds", []))
+            elif path == "/api/topics":
+                self._send_json(all_topics())
+            else:
+                self._send_json({"error": "not found"}, 404)
+        except Exception as e:  # noqa: BLE001
+            self._send_json({"error": f"{type(e).__name__}: {e}"}, 500)
+
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
+        body = self._read_body()
+        try:
+            if path == "/api/drafts/status":
+                update_status(body["id"], body["status"])
+                self._send_json({"ok": True})
+            elif path == "/api/feeds":
+                data = load_feeds_file()
+                data.setdefault("feeds", []).append({
+                    "name": body["name"],
+                    "url": body["url"],
+                    "type": body.get("type", "native_rss"),
+                    "topics": body.get("topics", []),
+                    "water_tier": "water" in body.get("topics", []),
+                })
+                save_feeds_file(data)
+                self._send_json({"ok": True})
+            elif path == "/api/fetch":
+                topics = body.get("topics") or None
+                self._send_json(trigger_fetch(topics=topics))
+            else:
+                self._send_json({"error": "not found"}, 404)
+        except Exception as e:  # noqa: BLE001
+            self._send_json({"error": f"{type(e).__name__}: {e}"}, 500)
+
+    def do_DELETE(self):
+        body = self._read_body()
+        try:
+            data = load_feeds_file()
+            name = body.get("name")
+            data["feeds"] = [f for f in data.get("feeds", []) if f.get("name") != name]
+            save_feeds_file(data)
+            self._send_json({"ok": True})
+        except Exception as e:  # noqa: BLE001
+            self._send_json({"error": f"{type(e).__name__}: {e}"}, 500)
+
+
+def main():
+    server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    url = f"http://127.0.0.1:{PORT}"
+    print(f"Alter 待审网页已启动： {url}")
+    print("关闭这个窗口即停止。只在本机可访问，不对外公开。")
+    threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\n已停止。")
+
+
+if __name__ == "__main__":
+    main()

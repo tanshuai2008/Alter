@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alter 待审草稿</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #1a1d24; --panel2: #22262f; --border: #2d323c;
+    --text: #e6e9ef; --muted: #9aa4b2; --accent: #4f8cff; --accent2: #2bd4a6;
+    --danger: #ff6b6b; --chip: #2a2f3a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
+  header { padding: 12px 18px; background: var(--panel); border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  header h1 { font-size: 17px; margin: 0 16px 0 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .chip { padding: 4px 10px; border-radius: 14px; background: var(--chip); color: var(--text); border: 1px solid var(--border); cursor: pointer; font-size: 13px; user-select: none; }
+  .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button { font-family: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--border); background: var(--panel2); color: var(--text); padding: 7px 14px; font-size: 13px; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.good { background: var(--accent2); border-color: var(--accent2); color: #06281f; font-weight: 600; }
+  button:hover { filter: brightness(1.1); }
+  .spacer { flex: 1; }
+  main { flex: 1; display: flex; overflow: hidden; }
+  #list { width: 360px; border-right: 1px solid var(--border); overflow-y: auto; background: var(--panel); }
+  .item { padding: 12px 14px; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .item:hover { background: var(--panel2); }
+  .item.sel { background: var(--panel2); border-left: 3px solid var(--accent); }
+  .item .src { font-size: 12px; color: var(--accent); }
+  .item .ttl { font-size: 14px; margin: 3px 0; line-height: 1.35; }
+  .item .meta { font-size: 11px; color: var(--muted); }
+  #detail { flex: 1; overflow-y: auto; padding: 24px 30px; }
+  #detail .src { color: var(--accent); font-size: 13px; }
+  #detail h2 { font-size: 20px; margin: 6px 0 4px; line-height: 1.4; }
+  #detail a { color: var(--accent); font-size: 13px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; margin-top: 16px; }
+  .card h3 { margin: 0 0 10px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .draft { white-space: pre-wrap; line-height: 1.7; font-size: 15px; }
+  .actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+  .empty { color: var(--muted); padding: 40px; text-align: center; }
+  dialog { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 12px; padding: 0; width: 440px; max-width: 90vw; }
+  dialog .dlg-body { padding: 20px 22px; }
+  dialog h3 { margin: 0 0 14px; }
+  dialog label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  dialog input { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel2); color: var(--text); font-size: 14px; }
+  dialog .dlg-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+  .feed-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .feed-row .fn { flex: 1; }
+  .feed-row .ft { color: var(--muted); font-size: 11px; }
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--accent2); color: #06281f; padding: 10px 20px; border-radius: 8px; font-weight: 600; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  .statusbadge { font-size: 11px; padding: 2px 7px; border-radius: 10px; background: var(--chip); color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🪞 Alter 待审草稿</h1>
+  <div class="chips" id="topicChips"></div>
+  <button class="primary" id="btnFetch">⟳ 手动抓取</button>
+  <div class="spacer"></div>
+  <button id="btnManage">管理关注对象</button>
+  <button id="btnRefresh">刷新列表</button>
+</header>
+<main>
+  <div id="list"></div>
+  <div id="detail"><div class="empty">左边选一条草稿查看</div></div>
+</main>
+
+<dialog id="manageDlg">
+  <div class="dlg-body">
+    <h3>管理关注对象</h3>
+    <div id="feedList" style="max-height:300px;overflow-y:auto;"></div>
+    <h3 style="margin-top:20px;font-size:14px;">新增一个</h3>
+    <label>名称</label><input id="nfName" placeholder="例如 Xylem 官方博客">
+    <label>新闻源 URL（RSS 或 Google News RSS）</label><input id="nfUrl" placeholder="https://...">
+    <label>标签（逗号分隔，如 water,tech）</label><input id="nfTopics" placeholder="water">
+    <div class="dlg-actions">
+      <button id="nfAdd" class="good">添加</button>
+      <button id="mgClose">关闭</button>
+    </div>
+  </div>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const TOPIC_LABELS = { water:"水务", tech:"科技", ai:"AI", sustainability:"可持续", energy:"能源" };
+let drafts = [], selected = null, activeTopics = new Set();
+
+const api = {
+  async get(p){ const r = await fetch(p); return r.json(); },
+  async post(p,b){ const r = await fetch(p,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b||{})}); return r.json(); },
+  async del(p,b){ const r = await fetch(p,{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify(b||{})}); return r.json(); },
+};
+function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),1800); }
+
+async function loadTopics(){
+  const topics = await api.get("/api/topics");
+  const box = document.getElementById("topicChips");
+  box.innerHTML = "";
+  topics.forEach(t=>{
+    const c = document.createElement("span");
+    c.className = "chip" + (activeTopics.has(t)?" on":"");
+    c.textContent = TOPIC_LABELS[t] || t;
+    c.onclick = ()=>{ activeTopics.has(t)?activeTopics.delete(t):activeTopics.add(t); loadTopics(); loadDrafts(); };
+    box.appendChild(c);
+  });
+}
+
+async function loadDrafts(){
+  let url = "/api/drafts?status=PENDING_REVIEW";
+  activeTopics.forEach(t=> url += "&topics="+encodeURIComponent(t));
+  drafts = await api.get(url);
+  renderList();
+}
+
+function renderList(){
+  const el = document.getElementById("list");
+  if(!drafts.length){ el.innerHTML = '<div class="empty">没有待审草稿<br>试试点右上角「手动抓取」</div>'; return; }
+  el.innerHTML = "";
+  drafts.forEach(d=>{
+    const div = document.createElement("div");
+    div.className = "item" + (selected && selected.id===d.id ? " sel":"");
+    const when = d.created_at ? new Date(d.created_at*1000).toLocaleString("zh-CN") : "";
+    div.innerHTML = `<div class="src">${esc(d.author||"")}</div>
+      <div class="ttl">${esc(d.title||"(无标题)")}</div>
+      <div class="meta">${when}</div>`;
+    div.onclick = ()=>{ selected = d; renderList(); renderDetail(); };
+    el.appendChild(div);
+  });
+}
+
+function renderDetail(){
+  const el = document.getElementById("detail");
+  if(!selected){ el.innerHTML = '<div class="empty">左边选一条草稿查看</div>'; return; }
+  const d = selected;
+  el.innerHTML = `
+    <div class="src">${esc(d.author||"")}</div>
+    <h2>${esc(d.title||"(无标题)")}</h2>
+    ${d.url ? `<a href="${esc(d.url)}" target="_blank">↗ 打开原文</a>` : ""}
+    <div class="card">
+      <h3>AI 生成的评论草稿（英文 + 中文）</h3>
+      <div class="draft" id="draftText">${esc(d.draft||"")}</div>
+    </div>
+    <div class="actions">
+      <button class="good" id="btnCopy">📋 复制草稿</button>
+      <button id="btnPosted">✓ 标记已发</button>
+      <button id="btnIgnore">✕ 忽略这条</button>
+    </div>`;
+  document.getElementById("btnCopy").onclick = ()=>{ navigator.clipboard.writeText(d.draft||""); toast("已复制到剪贴板"); };
+  document.getElementById("btnPosted").onclick = ()=> setStatus(d.id,"POSTED");
+  document.getElementById("btnIgnore").onclick = ()=> setStatus(d.id,"IGNORED");
+}
+
+async function setStatus(id,status){
+  await api.post("/api/drafts/status",{id,status});
+  toast(status==="POSTED"?"已标记为已发":"已忽略");
+  selected=null; renderDetail(); loadDrafts();
+}
+
+async function doFetch(){
+  const btn = document.getElementById("btnFetch");
+  btn.disabled = true; btn.textContent = "抓取中…（约1分钟）";
+  const body = {};
+  if(activeTopics.size) body.topics = [...activeTopics];
+  const r = await api.post("/api/fetch", body);
+  btn.disabled = false; btn.textContent = "⟳ 手动抓取";
+  if(r.error){ toast("抓取出错："+r.error); }
+  else { toast(`抓取完成：新增 ${r.new_drafts||0} 条草稿`); loadDrafts(); loadTopics(); }
+}
+
+// ── 关注对象管理 ──
+async function openManage(){
+  const feeds = await api.get("/api/feeds");
+  const box = document.getElementById("feedList");
+  box.innerHTML = "";
+  feeds.forEach(f=>{
+    const row = document.createElement("div");
+    row.className = "feed-row";
+    const tags = (f.topics||[]).map(t=>TOPIC_LABELS[t]||t).join("、");
+    row.innerHTML = `<span class="fn">${esc(f.name)}</span><span class="ft">${esc(tags)}</span>`;
+    const del = document.createElement("button");
+    del.textContent = "删除"; del.style.borderColor="var(--danger)"; del.style.color="var(--danger)";
+    del.onclick = async ()=>{ await api.del("/api/feeds",{name:f.name}); openManage(); loadTopics(); toast("已删除"); };
+    row.appendChild(del);
+    box.appendChild(row);
+  });
+  document.getElementById("manageDlg").showModal();
+}
+async function addFeed(){
+  const name = document.getElementById("nfName").value.trim();
+  const url = document.getElementById("nfUrl").value.trim();
+  const topics = document.getElementById("nfTopics").value.split(",").map(s=>s.trim()).filter(Boolean);
+  if(!name||!url){ toast("名称和 URL 不能为空"); return; }
+  await api.post("/api/feeds",{name,url,topics});
+  document.getElementById("nfName").value=""; document.getElementById("nfUrl").value=""; document.getElementById("nfTopics").value="";
+  openManage(); loadTopics(); toast("已添加");
+}
+
+function esc(s){ return String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+document.getElementById("btnFetch").onclick = doFetch;
+document.getElementById("btnRefresh").onclick = ()=>{ loadDrafts(); loadTopics(); };
+document.getElementById("btnManage").onclick = openManage;
+document.getElementById("mgClose").onclick = ()=> document.getElementById("manageDlg").close();
+document.getElementById("nfAdd").onclick = addFeed;
+
+loadTopics(); loadDrafts();
+</script>
+</body>
+</html>

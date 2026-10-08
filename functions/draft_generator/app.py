@@ -41,20 +41,26 @@ SAMPLE_POST = {
 
 def build_prompt(post: dict) -> str:
     return (
-        f"你是一个在相关领域有深度见解的从业者。请针对下面这条动态，"
-        f"写一段{COMMENT_TONE}的评论草稿，不超过 {COMMENT_MAX_WORDS} 字。"
-        f"要有具体观点，不要空泛客套，不要用明显的 AI 腔。\n\n"
-        f"标题：{post['title']}\n"
-        f"摘要：{post['summary']}\n"
-        f"来源：{post['url']}\n\n"
-        f"评论草稿："
+        f"You are a practitioner with real, in-depth insight in the relevant field. "
+        f"Write a social-media comment draft on the item below. "
+        f"Style: {COMMENT_TONE}. Have a concrete point of view; no empty pleasantries; "
+        f"no obvious AI tone.\n\n"
+        f"Output EXACTLY two paragraphs, in this order:\n"
+        f"1) First an ENGLISH paragraph (<= {COMMENT_MAX_WORDS} words).\n"
+        f"2) Then a blank line, then a SIMPLIFIED CHINESE paragraph that conveys the "
+        f"same point (not a word-for-word translation; natural Chinese, <= {COMMENT_MAX_WORDS} 字).\n"
+        f"Do not add any labels, headers, or quotation marks around the paragraphs.\n\n"
+        f"Title: {post['title']}\n"
+        f"Summary: {post['summary']}\n"
+        f"Source: {post['url']}\n\n"
+        f"Comment draft:"
     )
 
 
 def generate_draft(post: dict) -> str:
     body = {
         "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": 300,
+        "max_tokens": 600,
         "messages": [{"role": "user", "content": build_prompt(post)}],
     }
     resp = _bedrock.invoke_model(modelId=MODEL_ID, body=json.dumps(body))

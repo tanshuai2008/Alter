@@ -17,6 +17,7 @@ import os
 import time
 import uuid
 import hashlib
+import calendar
 
 import boto3
 import feedparser
@@ -32,6 +33,8 @@ COMMENT_MAX_WORDS = int(os.environ.get("COMMENT_MAX_WORDS", "80"))
 MAX_ITEMS_PER_FEED = int(os.environ.get("MAX_ITEMS_PER_FEED", "3"))
 # 只抓水务子集（先跑通）；设为 "false" 则抓全部 15 家
 WATER_TIER_ONLY = os.environ.get("WATER_TIER_ONLY", "true").lower() == "true"
+# 只处理过去 N 天内发布的条目（配合每周抓取；0 表示不限时间）
+LOOKBACK_DAYS = int(os.environ.get("LOOKBACK_DAYS", "7"))
 # 去重表的 TTL（秒），默认 90 天后自动清理旧记录
 SEEN_TTL_SECONDS = int(os.environ.get("SEEN_TTL_SECONDS", str(90 * 24 * 3600)))
 
@@ -43,11 +46,16 @@ _seen = _dynamodb.Table(SEEN_TABLE_NAME)
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
 
-def load_feeds() -> list:
+def load_feeds(topics=None) -> list:
+    """加载源。topics 非空时只保留含任一指定标签的源；
+    否则遵循 WATER_TIER_ONLY 开关（定时任务用）。"""
     with open(os.path.join(_HERE, "feeds.json"), "r", encoding="utf-8") as f:
         data = json.load(f)
     feeds = data.get("feeds", [])
-    if WATER_TIER_ONLY:
+    if topics:
+        topic_set = set(topics)
+        feeds = [x for x in feeds if set(x.get("topics", [])) & topic_set]
+    elif WATER_TIER_ONLY:
         feeds = [x for x in feeds if x.get("water_tier")]
     return feeds
 
@@ -56,6 +64,18 @@ def entry_key(entry) -> str:
     """用 guid 优先，否则 link，否则标题 —— 作为去重键。"""
     raw = getattr(entry, "id", None) or getattr(entry, "link", None) or getattr(entry, "title", "")
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def is_recent(entry) -> bool:
+    """条目是否在过去 LOOKBACK_DAYS 天内发布。
+    拿不到发布时间时返回 True（宁可处理，不漏掉）。LOOKBACK_DAYS=0 表示不限。"""
+    if LOOKBACK_DAYS <= 0:
+        return True
+    tm = getattr(entry, "published_parsed", None) or getattr(entry, "updated_parsed", None)
+    if not tm:
+        return True
+    published_ts = calendar.timegm(tm)  # struct_time 视为 UTC
+    return published_ts >= (time.time() - LOOKBACK_DAYS * 24 * 3600)
 
 
 def already_seen(key: str) -> bool:
@@ -69,20 +89,26 @@ def mark_seen(key: str):
 
 def build_prompt(post: dict) -> str:
     return (
-        f"你是一个在相关领域有深度见解的从业者。请针对下面这条动态，"
-        f"写一段{COMMENT_TONE}的评论草稿，不超过 {COMMENT_MAX_WORDS} 字。"
-        f"要有具体观点，不要空泛客套，不要用明显的 AI 腔。\n\n"
-        f"标题：{post['title']}\n"
-        f"摘要：{post['summary']}\n"
-        f"来源：{post['url']}\n\n"
-        f"评论草稿："
+        f"You are a practitioner with real, in-depth insight in the relevant field. "
+        f"Write a social-media comment draft on the item below. "
+        f"Style: {COMMENT_TONE}. Have a concrete point of view; no empty pleasantries; "
+        f"no obvious AI tone.\n\n"
+        f"Output EXACTLY two paragraphs, in this order:\n"
+        f"1) First an ENGLISH paragraph (<= {COMMENT_MAX_WORDS} words).\n"
+        f"2) Then a blank line, then a SIMPLIFIED CHINESE paragraph that conveys the "
+        f"same point (not a word-for-word translation; natural Chinese, <= {COMMENT_MAX_WORDS} 字).\n"
+        f"Do not add any labels, headers, or quotation marks around the paragraphs.\n\n"
+        f"Title: {post['title']}\n"
+        f"Summary: {post['summary']}\n"
+        f"Source: {post['url']}\n\n"
+        f"Comment draft:"
     )
 
 
 def generate_draft(post: dict) -> str:
     body = {
         "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": 300,
+        "max_tokens": 600,
         "messages": [{"role": "user", "content": build_prompt(post)}],
     }
     resp = _bedrock.invoke_model(modelId=MODEL_ID, body=json.dumps(body))
@@ -105,7 +131,11 @@ def save_draft(source_name: str, entry, draft: str):
 
 
 def lambda_handler(event, context):
-    feeds = load_feeds()
+    # 事件可带 topics 列表（网页手动抓取时按标签只抓某些源）
+    topics = None
+    if isinstance(event, dict):
+        topics = event.get("topics") or None
+    feeds = load_feeds(topics=topics)
     stats = {"feeds": len(feeds), "new_drafts": 0, "skipped": 0, "errors": []}
 
     for feed in feeds:
@@ -123,6 +153,11 @@ def lambda_handler(event, context):
             key = entry_key(entry)
             if already_seen(key):
                 stats["skipped"] += 1
+                continue
+            if not is_recent(entry):
+                stats["skipped"] += 1
+                # 旧条目也标记为已见，避免下次重复判断
+                mark_seen(key)
                 continue
 
             post = {
