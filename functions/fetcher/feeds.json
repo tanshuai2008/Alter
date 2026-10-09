@@ -8,7 +8,8 @@
       "topics": [
         "water"
       ],
-      "water_tier": true
+      "water_tier": true,
+      "last_scanned": 1791580591
     },
     {
       "name": "Water Environment Federation",
@@ -17,7 +18,8 @@
       "topics": [
         "water"
       ],
-      "water_tier": true
+      "water_tier": true,
+      "last_scanned": 1791580591
     },
     {
       "name": "Water Resilience Coalition",
@@ -27,7 +29,8 @@
         "water",
         "sustainability"
       ],
-      "water_tier": true
+      "water_tier": true,
+      "last_scanned": 1791580591
     },
     {
       "name": "Alliance for Water Stewardship",

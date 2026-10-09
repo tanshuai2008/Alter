@@ -26,6 +26,7 @@ from urllib.parse import urlparse, parse_qs
 
 import boto3
 from boto3.dynamodb.conditions import Attr
+from botocore.config import Config
 
 # ── 配置（与项目其余部分一致）────────────────────────────
 REGION = os.environ.get("AWS_REGION", "us-east-1")
@@ -43,7 +44,14 @@ _PERSONAS_PATH = os.path.join(_HERE, "..", "functions", "fetcher", "personas.jso
 _session = boto3.Session(profile_name=PROFILE, region_name=REGION)
 _dynamodb = _session.resource("dynamodb")
 _drafts = _dynamodb.Table(DRAFTS_TABLE)
-_lambda = _session.client("lambda")
+# Lambda 同步生成评论可能跑 1~2 分钟（长档双语），boto3 默认读超时只有 60s
+# 会导致假性卡住 + 后台自动重试。放宽到 300s（与 Lambda 自身上限对齐）、关闭重试。
+_lambda_cfg = Config(
+    read_timeout=300,
+    connect_timeout=15,
+    retries={"max_attempts": 0},
+)
+_lambda = _session.client("lambda", config=_lambda_cfg)
 
 
 # ── feeds.json 读写 ─────────────────────────────────────

@@ -14,6 +14,8 @@ Alter —— RSS 抓取 Lambda（云端版，POC 第二步）
 
 import json
 import os
+import re
+import html
 import time
 import uuid
 import hashlib
@@ -69,6 +71,36 @@ def entry_key(entry) -> str:
     """用 guid 优先，否则 link，否则标题 —— 作为去重键。"""
     raw = getattr(entry, "id", None) or getattr(entry, "link", None) or getattr(entry, "title", "")
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+_TAG_RE = re.compile(r"<[^>]+>")
+_WS_RE = re.compile(r"\s+")
+
+
+def extract_summary(entry, limit: int = 1000) -> str:
+    """从 RSS/Atom 条目里稳健地取一段可读的原文摘要。
+    不同源把正文放在不同字段：优先 summary，其次 content（Atom 全文），
+    再退 description/subtitle。取到后清除 HTML 标签、还原实体、压缩空白。
+    Google News 兜底源的 summary 是一坨 <a> 标签，清洗后至少得到纯文本标题。"""
+    raw = ""
+    # 1) summary（最常见）
+    raw = getattr(entry, "summary", "") or ""
+    # 2) content（Atom 全文，通常比 summary 完整）——若 summary 太短则改用它
+    content = getattr(entry, "content", None)
+    if content and isinstance(content, list):
+        cval = content[0].get("value", "") if isinstance(content[0], dict) else ""
+        if len(cval) > len(raw):
+            raw = cval
+    # 3) 兜底字段
+    if not raw:
+        raw = getattr(entry, "description", "") or getattr(entry, "subtitle", "") or ""
+    if not raw:
+        return ""
+    # 清洗：去标签 -> 还原 HTML 实体 -> 压缩空白
+    text = _TAG_RE.sub(" ", raw)
+    text = html.unescape(text)
+    text = _WS_RE.sub(" ", text).strip()
+    return text[:limit]
 
 
 def is_recent(entry) -> bool:
@@ -171,7 +203,7 @@ def save_draft(source_name: str, entry, draft: str, persona_name: str = "",
             "author": source_name,
             "title": getattr(entry, "title", ""),
             "url": getattr(entry, "link", ""),
-            "summary": getattr(entry, "summary", "")[:1000],
+            "summary": extract_summary(entry, 1000),
             "topics": topics or [],
             "draft": draft,
             "persona": persona_name,  # 本条草稿用的口吻（空=通用）
@@ -278,7 +310,7 @@ def lambda_handler(event, context):
                     post = {
                         "author": name,
                         "title": getattr(entry, "title", ""),
-                        "summary": getattr(entry, "summary", "")[:1000],
+                        "summary": extract_summary(entry, 1000),
                         "url": getattr(entry, "link", ""),
                     }
                     draft = generate_draft(post, persona, word_limit)
