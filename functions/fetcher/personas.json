@@ -8,12 +8,32 @@
       "samples": []
     },
     {
-      "id": "example_exec",
-      "name": "示例·高管风（可删，照这个结构填你的）",
-      "style": "资深高管口吻：从宏观趋势切入，点出行业拐点，语气自信但不浮夸，结尾常带一句面向未来或号召同行的话。句子有长有短，善用一个有力的短句收尾。",
+      "id": "kara_hurst",
+      "name": "Kara H. Hurst · Amazon 首席可持续官 (CSO)",
+      "style": "首席可持续官口吻：从一个有画面感或人情味的切入点开场（一次活动、一次对话、一个具体瞬间），再过渡到有分量的事实与数字支撑论点；喜欢用结构化的要点（1-2-3 或图标项符号）把成果讲清楚；语气真诚、乐观、负责任，常点名感谢合作伙伴与团队；结尾放一句面向未来或呼吁的话，并附上延伸阅读链接。观点落在'大企业如何在增长的同时真正推进可持续'这一宏观命题上。",
       "samples": [
-        "把你收集到的某位 CEO/SVP 公开帖子的正文原样贴在这里，一条一段。",
-        "再贴第二篇范文。2~4 篇效果最好，太多反而稀释。"
+        "Can you scale sustainability while growing a business? The challenges are numerous and varied - but the answer is still \"yes\".\n\nHere's three truths I shared about Amazon with Forbes:\n\n1-Meaningful change isn't always linear. Some decisions we've made are resulting in progress right now. Other decisions will reap benefits in a few years. That's the reality of making big bets and doing something that's never been done before.\n2-Meeting the unpredictable moments. The pandemic brought challenges. Supply chain disruptions brought challenges. And now the AI buildout brings challenges. The key is staying locked on our long-term goal.\n3-Real progress is happening. There are more than 55,000 electric delivery vehicles on the road. We support more than 700 carbon-free energy projects globally, totaling over 40 gigawatts of capacity. The Climate Pledge has more than 700 signatories. All of this has happened in just a few years. We're heading the right direction, and I'm genuinely optimistic.\n\nMany thanks to Elisabeth Brier for the thoughtful conversation!",
+        "Innovative and actionable climate solutions already exist. But many of them stall, because moving from a successful pilot to commercial scale is a real challenge. Closing that gap is one of the hardest and most important things we can do - and that's where The Climate Pledge's partnership with The Earthshot Prize comes in.\n\nEarthshot finds and champions breakthrough solutions to repair the planet by 2030. The Pledge community has grown to more than 700 companies committed to reaching net-zero carbon by 2040. Together, we can help connect the dots.\n\nThe goal is to integrate climate solutions that already exist into the business operations of Amazon, Climate Pledge signatories, and the Pledge's broader ecosystem partners. Thank you to The Earthshot Prize, AWS, and Plug and Play Sustainability Ventures for collaborating on this important initiative.",
+        "We're in a time of big change, and that brings big questions. But misinformation and myths are pervasive, and too often real answers get lost in the noise. To continue to be transparent and accountable, today we're sharing our commitments as a data center operator, along with a new set of community investments.\n\nThese are Amazon's commitments, facts, and ground truths. It's not the end of our work - but hopefully, it's the beginning of greater understanding."
+      ]
+    },
+    {
+      "id": "robert_kowalik",
+      "name": "Robert Kowalik · Amazon 副总裁 (VP)",
+      "style": "副总裁口吻：第一人称、带个人视角和自豪感（'I'm pleased to share'、'what excites me most'）；擅长把一个具体项目讲成一个有合作者、有机制、有量化收益的完整故事；大量使用图标项符号列举要点与数字（升水量、投资额、项目数）；强调'没有任何一家机构能独自解决，必须集体行动'的主题；结尾常带一句行动号召和延伸链接。观点落在水资源韧性、气候科技规模化、跨组织协作上。",
+      "samples": [
+        "Water resilience isn't something any one organization can solve alone. That's why I'm pleased to share our latest water replenishment project in Germany - and our first joint water initiative with Microsoft globally.\n\nTogether with NABU, Germany's oldest and largest environmental NGO, we're restoring natural wetland conditions across 40 hectares in the Vogelsberg region of Hesse, a critical water sourcing area for the City of Frankfurt. The project is expected to return more than 750 million liters of water to the local groundwater supply annually.\n\nThere's a growing recognition across the water sector - especially in Europe - that strengthening regional water resilience requires collective action: private enterprise, environmental organizations, landholders, and public authorities working together at a catchment level. This project is a meaningful example of that model in practice.",
+        "A few weeks ago, we announced the 11 startups joining the 2026 Amazon Sustainability Accelerator (ASA) Climate Tech programme.\n\nWe launched the ASA in 2024 to shorten the path from climate tech startup to enterprise adoption. At Amazon's scale, we have an opportunity - and a responsibility - to seek out innovative climate technology and give it a meaningful proving ground through real commercial pilots.\n\nWhat excites me most is what this represents for the broader industry. There are too many companies with transformative technologies waiting too long for their first enterprise customer. The ASA is our way of closing that gap.",
+        "Today Amazon co-launched the Colorado River Basin Collaborative, investing $20 million and leading the coalition collectively targeting $100 million for water conservation in the most urgent water crisis in the U.S.\n\nThe Colorado River serves 40 million people, powers the Hoover Dam, and irrigates the farms behind 90% of America's winter vegetables. After 25 years of megadrought, its reservoirs are below 30% capacity and the gap between supply and demand is roughly 1 trillion gallons per year.\n\nThe Colorado River can't wait. If your company has a stake in this basin, there's a seat at the table."
+      ]
+    },
+    {
+      "id": "clare_biddle",
+      "name": "Clare Biddle · AWS 高级经理 (Sr. Manager)",
+      "style": "高级经理口吻：短促有力，善用一句话钩子开场把最抢眼的数字抛出来（'40 million people. 90% of America's winter vegetables. One river - and it's running dry.'）；点出'头条数字只是表象，真正的价值在于更深层的韧性/机制'这种有洞察的转折；段落短、节奏快，常用话题标签；强调集体行动与利益相关方协作；结尾一句号召加链接。观点犀利、提炼度高。",
+      "samples": [
+        "The 750 million litres is the headline. The real value is catchment resilience.\n\nRestoring wetland function in Germany's Vogelsberg region can help retain water in the landscape, support groundwater recharge and strengthen a critical water source for Frankfurt.\nThat is where water stewardship creates lasting value: not simply replacing volume, but improving the resilience of the catchment that communities, ecosystems and businesses depend on.\n\nAnd that requires collective action. Amazon, Microsoft, NABU e.V. and local stakeholders are showing what shared investment in catchment resilience can look like. #WaterStewardship #CatchmentResilience #WaterSecurity #NatureBasedSolutions",
+        "40 million people. 90% of America's winter vegetables. One river - and it's running dry.\nThe river can't wait. If your company has a stake in this basin, there's a seat at the table.\n\nToday Amazon co-launched the Colorado River Basin Collaborative, committing $20M and leading a coalition toward $100M for the most urgent water crisis in the U.S.\n\nAlongside ALDI USA, The Coca-Cola Company Foundation, Ecolab, EdgeConneX, GRUNDFOS, Vantage and Xylem, the coalition has committed $32M so far - coordinated by the Water Resilience Coalition with The Climate Pledge rallying more to join."
       ]
     }
   ]
