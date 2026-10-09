@@ -19,6 +19,7 @@ Alter —— 本地待审网页后端（路线 A）
 import json
 import os
 import threading
+import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
@@ -142,6 +143,27 @@ def _invoke_fetcher(payload: dict) -> dict:
         return {"raw": raw}
 
 
+def _mark_scanned(topics=None, feeds=None):
+    """抓取成功后，给本地 feeds.json 里实际被抓的源写上 last_scanned 时间戳。
+    feeds=按名字点选；topics=按标签；两者都空=全部源。
+    注意：这是"本地上次抓取时间"，云端每周一定时任务不经过这里，不会更新它。"""
+    now = int(time.time())
+    data = load_feeds_file()
+    name_set = set(feeds) if feeds else None
+    topic_set = set(topics) if topics else None
+    for feed in data.get("feeds", []):
+        hit = False
+        if name_set is not None:
+            hit = feed.get("name") in name_set
+        elif topic_set is not None:
+            hit = bool(set(feed.get("topics", [])) & topic_set)
+        else:
+            hit = True  # 全部源
+        if hit:
+            feed["last_scanned"] = now
+    save_feeds_file(data)
+
+
 def trigger_fetch(topics=None, feeds=None, generate=False, persona=None, word_limit=None) -> dict:
     """同步调用 fetcher Lambda 抓取。默认只抓不生成（A 方案）。
     feeds=点选的信息源名字列表；topics=按标签；两者都空=全部/定时默认。"""
@@ -156,7 +178,14 @@ def trigger_fetch(topics=None, feeds=None, generate=False, persona=None, word_li
             payload["persona"] = persona
         if word_limit:
             payload["word_limit"] = int(word_limit)
-    return _invoke_fetcher(payload)
+    result = _invoke_fetcher(payload)
+    # 抓取没报错才记录时间（Lambda 返回里没有 error 字段即视为成功）
+    if not (isinstance(result, dict) and result.get("error")):
+        try:
+            _mark_scanned(topics=topics, feeds=feeds)
+        except Exception:  # noqa: BLE001 —— 记录时间失败不影响抓取结果
+            pass
+    return result
 
 
 def trigger_generate(draft_id: str, persona=None, word_limit=None) -> dict:

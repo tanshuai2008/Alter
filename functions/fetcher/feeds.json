@@ -1,22 +1,162 @@
 {
   "_comment": "Alter 关注对象新闻源配置。topics 为领域标签（可多个），网页按标签筛选/扫描。water_tier 保留兼容旧开关。所有源于 2026-10-08 实测验证可抓。",
   "feeds": [
-    { "name": "Inside Water Magazine", "url": "https://insidewater.com.au/feed/", "type": "native_rss", "topics": ["water"], "water_tier": true },
-    { "name": "Water Environment Federation", "url": "https://www.wef.org/category/news/feed/", "type": "native_rss", "topics": ["water"], "water_tier": true },
-    { "name": "Water Resilience Coalition", "url": "https://ceowatermandate.org/feed/", "type": "native_rss", "topics": ["water", "sustainability"], "water_tier": true },
-    { "name": "Alliance for Water Stewardship", "url": "https://a4ws.org/feed/", "type": "native_rss", "topics": ["water", "sustainability"], "water_tier": true },
-    { "name": "US Water Alliance", "url": "https://uswateralliance.org/feed/", "type": "native_rss", "topics": ["water"], "water_tier": true },
-    { "name": "Grundfos", "url": "https://news.google.com/rss/search?q=Grundfos+water&hl=en-US", "type": "google_news", "topics": ["water"], "water_tier": true },
-    { "name": "Trellis Group", "url": "https://trellis.net/feed/", "type": "native_rss", "topics": ["sustainability"], "water_tier": false },
-    { "name": "AWS for Energy & Utilities", "url": "https://aws.amazon.com/blogs/industries/category/industries/energy/feed/", "type": "native_rss", "topics": ["tech", "energy"], "water_tier": false },
-    { "name": "TechCrunch", "url": "https://techcrunch.com/feed/", "type": "native_rss", "topics": ["tech"], "water_tier": false },
-    { "name": "MIT Technology Review", "url": "https://www.technologyreview.com/feed/", "type": "native_rss", "topics": ["tech"], "water_tier": false },
-    { "name": "AI Engineer (Latent Space)", "url": "https://www.latent.space/feed", "type": "native_rss", "topics": ["ai", "tech"], "water_tier": false },
-    { "name": "Water Online", "url": "https://news.google.com/rss/search?q=%22Water+Online%22&hl=en-US", "type": "google_news", "topics": ["water"], "water_tier": false },
-    { "name": "Bloomberg Green", "url": "https://news.google.com/rss/search?q=Bloomberg+Green&hl=en-US", "type": "google_news", "topics": ["sustainability"], "water_tier": false },
-    { "name": "Sustainability Magazine", "url": "https://news.google.com/rss/search?q=%22Sustainability+Magazine%22+sustainabilitymag&hl=en-US", "type": "google_news", "topics": ["sustainability"], "water_tier": false },
-    { "name": "mHUB", "url": "https://news.google.com/rss/search?q=mHUB+Chicago&hl=en-US", "type": "google_news", "topics": ["tech"], "water_tier": false },
-    { "name": "The Climate Pledge", "url": "https://news.google.com/rss/search?q=%22The+Climate+Pledge%22+Amazon&hl=en-US", "type": "google_news", "topics": ["sustainability"], "water_tier": false },
-    { "name": "CRN", "url": "https://news.google.com/rss/search?q=CRN+channel+technology+news&hl=en-US", "type": "google_news", "topics": ["tech"], "water_tier": false }
+    {
+      "name": "Inside Water Magazine",
+      "url": "https://insidewater.com.au/feed/",
+      "type": "native_rss",
+      "topics": [
+        "water"
+      ],
+      "water_tier": true
+    },
+    {
+      "name": "Water Environment Federation",
+      "url": "https://www.wef.org/category/news/feed/",
+      "type": "native_rss",
+      "topics": [
+        "water"
+      ],
+      "water_tier": true
+    },
+    {
+      "name": "Water Resilience Coalition",
+      "url": "https://ceowatermandate.org/feed/",
+      "type": "native_rss",
+      "topics": [
+        "water",
+        "sustainability"
+      ],
+      "water_tier": true
+    },
+    {
+      "name": "Alliance for Water Stewardship",
+      "url": "https://a4ws.org/feed/",
+      "type": "native_rss",
+      "topics": [
+        "water",
+        "sustainability"
+      ],
+      "water_tier": true
+    },
+    {
+      "name": "US Water Alliance",
+      "url": "https://uswateralliance.org/feed/",
+      "type": "native_rss",
+      "topics": [
+        "water"
+      ],
+      "water_tier": true
+    },
+    {
+      "name": "Grundfos",
+      "url": "https://news.google.com/rss/search?q=Grundfos+water&hl=en-US",
+      "type": "google_news",
+      "topics": [
+        "water"
+      ],
+      "water_tier": true
+    },
+    {
+      "name": "Trellis Group",
+      "url": "https://trellis.net/feed/",
+      "type": "native_rss",
+      "topics": [
+        "sustainability"
+      ],
+      "water_tier": false
+    },
+    {
+      "name": "AWS for Energy & Utilities",
+      "url": "https://aws.amazon.com/blogs/industries/category/industries/energy/feed/",
+      "type": "native_rss",
+      "topics": [
+        "tech",
+        "energy"
+      ],
+      "water_tier": false
+    },
+    {
+      "name": "TechCrunch",
+      "url": "https://techcrunch.com/feed/",
+      "type": "native_rss",
+      "topics": [
+        "tech"
+      ],
+      "water_tier": false
+    },
+    {
+      "name": "MIT Technology Review",
+      "url": "https://www.technologyreview.com/feed/",
+      "type": "native_rss",
+      "topics": [
+        "tech"
+      ],
+      "water_tier": false
+    },
+    {
+      "name": "AI Engineer (Latent Space)",
+      "url": "https://www.latent.space/feed",
+      "type": "native_rss",
+      "topics": [
+        "ai",
+        "tech"
+      ],
+      "water_tier": false
+    },
+    {
+      "name": "Water Online",
+      "url": "https://news.google.com/rss/search?q=%22Water+Online%22&hl=en-US",
+      "type": "google_news",
+      "topics": [
+        "water"
+      ],
+      "water_tier": false
+    },
+    {
+      "name": "Bloomberg Green",
+      "url": "https://news.google.com/rss/search?q=Bloomberg+Green&hl=en-US",
+      "type": "google_news",
+      "topics": [
+        "sustainability"
+      ],
+      "water_tier": false
+    },
+    {
+      "name": "Sustainability Magazine",
+      "url": "https://news.google.com/rss/search?q=%22Sustainability+Magazine%22+sustainabilitymag&hl=en-US",
+      "type": "google_news",
+      "topics": [
+        "sustainability"
+      ],
+      "water_tier": false
+    },
+    {
+      "name": "mHUB",
+      "url": "https://news.google.com/rss/search?q=mHUB+Chicago&hl=en-US",
+      "type": "google_news",
+      "topics": [
+        "tech"
+      ],
+      "water_tier": false
+    },
+    {
+      "name": "The Climate Pledge",
+      "url": "https://news.google.com/rss/search?q=%22The+Climate+Pledge%22+Amazon&hl=en-US",
+      "type": "google_news",
+      "topics": [
+        "sustainability"
+      ],
+      "water_tier": false
+    },
+    {
+      "name": "CRN",
+      "url": "https://news.google.com/rss/search?q=CRN+channel+technology+news&hl=en-US",
+      "type": "google_news",
+      "topics": [
+        "tech"
+      ],
+      "water_tier": false
+    }
   ]
 }

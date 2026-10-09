@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Alter 待审草稿</title>
+<title>Alter — Draft Review</title>
 <style>
   :root {
     --bg: #0f1115; --panel: #1a1d24; --panel2: #22262f; --border: #2d323c;
@@ -14,9 +14,6 @@
   body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
   header { padding: 12px 18px; background: var(--panel); border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
   header h1 { font-size: 17px; margin: 0 16px 0 0; }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-  .chip { padding: 4px 10px; border-radius: 14px; background: var(--chip); color: var(--text); border: 1px solid var(--border); cursor: pointer; font-size: 13px; user-select: none; }
-  .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
   button { font-family: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--border); background: var(--panel2); color: var(--text); padding: 7px 14px; font-size: 13px; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   button.good { background: var(--accent2); border-color: var(--accent2); color: #06281f; font-weight: 600; }
@@ -39,7 +36,7 @@
   .draft { white-space: pre-wrap; line-height: 1.7; font-size: 15px; }
   .actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
   .empty { color: var(--muted); padding: 40px; text-align: center; }
-  dialog { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 12px; padding: 0; width: 440px; max-width: 90vw; }
+  dialog { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 12px; padding: 0; width: 480px; max-width: 90vw; }
   dialog .dlg-body { padding: 20px 22px; }
   dialog h3 { margin: 0 0 14px; }
   dialog label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
@@ -50,7 +47,6 @@
   .feed-row .ft { color: var(--muted); font-size: 11px; }
   .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--accent2); color: #06281f; padding: 10px 20px; border-radius: 8px; font-weight: 600; opacity: 0; transition: opacity .2s; pointer-events: none; }
   .toast.show { opacity: 1; }
-  .statusbadge { font-size: 11px; padding: 2px 7px; border-radius: 10px; background: var(--chip); color: var(--muted); }
   .tab { font-size: 13px; }
   .tab.primary { background: var(--accent); border-color: var(--accent); color:#fff; }
   .genbox { background: var(--panel); border: 1px dashed var(--border); border-radius: 10px; padding: 16px 18px; margin-top: 16px; }
@@ -60,75 +56,75 @@
   .src-row { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
   .src-row input[type=checkbox]{ width:16px; height:16px; }
   .src-row .sname { flex:1; }
-  .src-row .stags { color:var(--muted); font-size:11px; }
+  .src-row .stags { color:var(--muted); font-size:11px; min-width:120px; }
+  .src-row .sscan { color:var(--muted); font-size:11px; min-width:130px; text-align:right; }
 </style>
 </head>
 <body>
 <header>
-  <h1>🪞 Alter 待审草稿</h1>
-  <div class="chips" id="topicChips"></div>
-  <button id="btnSources">📋 选择信息源</button>
-  <button class="primary" id="btnFetch">⟳ 抓取新闻</button>
+  <h1>🪞 Alter — Draft Review</h1>
+  <button id="btnSources">📋 Select Sources</button>
+  <button class="primary" id="btnFetch">⟳ Fetch News</button>
   <div class="spacer"></div>
-  <button id="btnPersona">管理口吻</button>
-  <button id="btnManage">管理关注对象</button>
-  <button id="btnRefresh">刷新列表</button>
+  <button id="btnPersona">Manage Voices</button>
+  <button id="btnManage">Manage Sources</button>
+  <button id="btnRefresh">Refresh</button>
 </header>
 <div id="viewTabs" style="padding:8px 18px;background:var(--panel);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;">
-  <span style="color:var(--muted);font-size:12px;margin-right:4px;">查看：</span>
-  <button class="tab primary" data-view="NEW">🆕 待生成评论</button>
-  <button class="tab" data-view="PENDING_REVIEW">✍ 已生成待审</button>
+  <span style="color:var(--muted);font-size:12px;margin-right:4px;">View:</span>
+  <button class="tab primary" data-view="NEW">🆕 To Generate</button>
+  <button class="tab" data-view="PENDING_REVIEW">✍ Generated / Pending</button>
 </div>
 <main>
   <div id="list"></div>
-  <div id="detail"><div class="empty">左边选一条帖子查看</div></div>
+  <div id="detail"><div class="empty">Select a post on the left to view it.</div></div>
 </main>
 
 <dialog id="sourcesDlg">
   <div class="dlg-body">
-    <h3>选择要抓取的信息源</h3>
-    <p style="color:var(--muted);font-size:12px;margin:0 0 10px;">勾选哪几家，「抓取新闻」就只抓哪几家。标签只是分类说明，可点下方快捷按钮批量勾选。</p>
+    <h3>Select sources to fetch</h3>
+    <p style="color:var(--muted);font-size:12px;margin:0 0 10px;">Only the checked sources will be fetched. "Last scanned" is the last time you fetched this source from this app (the weekly scheduled run on AWS is not reflected here).</p>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
-      <button id="srcAll" style="font-size:12px;">全选</button>
-      <button id="srcNone" style="font-size:12px;">全不选</button>
+      <button id="srcAll" style="font-size:12px;">Select all</button>
+      <button id="srcNone" style="font-size:12px;">Clear all</button>
       <span id="srcTopicBtns" style="display:flex;gap:6px;flex-wrap:wrap;"></span>
     </div>
-    <div id="sourceList" style="max-height:340px;overflow-y:auto;"></div>
+    <div id="sourceList" style="max-height:360px;overflow-y:auto;"></div>
     <div class="dlg-actions">
-      <button id="srcFetch" class="good">抓取选中的源</button>
-      <button id="srcClose">关闭</button>
+      <button id="srcFetch" class="good">Fetch selected</button>
+      <button id="srcClose">Close</button>
     </div>
   </div>
 </dialog>
 
 <dialog id="manageDlg">
   <div class="dlg-body">
-    <h3>管理关注对象</h3>
+    <h3>Manage sources</h3>
     <div id="feedList" style="max-height:300px;overflow-y:auto;"></div>
-    <h3 style="margin-top:20px;font-size:14px;">新增一个</h3>
-    <label>名称</label><input id="nfName" placeholder="例如 Xylem 官方博客">
-    <label>新闻源 URL（RSS 或 Google News RSS）</label><input id="nfUrl" placeholder="https://...">
-    <label>标签（逗号分隔，如 water,tech）</label><input id="nfTopics" placeholder="water">
+    <h3 style="margin-top:20px;font-size:14px;">Add a source</h3>
+    <label>Name</label><input id="nfName" placeholder="e.g. Xylem Official Blog">
+    <label>Feed URL (RSS or Google News RSS)</label><input id="nfUrl" placeholder="https://...">
+    <label>Tags (comma-separated, e.g. water,tech)</label><input id="nfTopics" placeholder="water">
     <div class="dlg-actions">
-      <button id="nfAdd" class="good">添加</button>
-      <button id="mgClose">关闭</button>
+      <button id="nfAdd" class="good">Add</button>
+      <button id="mgClose">Close</button>
     </div>
   </div>
 </dialog>
 
 <dialog id="personaDlg">
   <div class="dlg-body">
-    <h3>管理口吻（模仿高管写作风格）</h3>
+    <h3>Manage voices (mimic an executive's writing style)</h3>
     <div id="personaList" style="max-height:220px;overflow-y:auto;"></div>
-    <h3 style="margin-top:20px;font-size:14px;">新增 / 编辑一个口吻</h3>
-    <label>口吻名称</label><input id="pName" placeholder="例如 水务CEO风">
-    <label>风格说明（一句话描述这个口吻的特点）</label>
-    <input id="pStyle" placeholder="从宏观趋势切入，自信有力，结尾常带号召">
-    <label>范文（每篇一段，用空行分隔；2~4 篇最佳）</label>
-    <textarea id="pSamples" rows="6" placeholder="把收集到的高管公开帖子正文贴这里，一篇一段，中间空一行隔开" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px;resize:vertical;"></textarea>
+    <h3 style="margin-top:20px;font-size:14px;">Add / edit a voice</h3>
+    <label>Voice name</label><input id="pName" placeholder="e.g. Water CEO voice">
+    <label>Style notes (one line describing this voice)</label>
+    <input id="pStyle" placeholder="Opens with a macro trend, confident and punchy, often ends with a call to action">
+    <label>Sample posts (one per paragraph, separated by a blank line; 2-4 works best)</label>
+    <textarea id="pSamples" rows="6" placeholder="Paste the executive's public post text here, one post per paragraph, separated by a blank line" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:13px;resize:vertical;"></textarea>
     <div class="dlg-actions">
-      <button id="pSave" class="good">保存口吻</button>
-      <button id="pClose">关闭</button>
+      <button id="pSave" class="good">Save voice</button>
+      <button id="pClose">Close</button>
     </div>
   </div>
 </dialog>
@@ -136,11 +132,11 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const TOPIC_LABELS = { water:"水务", tech:"科技", ai:"AI", sustainability:"可持续", energy:"能源" };
-const LENGTHS = [ {v:50,label:"精简（约50词）"}, {v:100,label:"中等（约100词）"}, {v:180,label:"长（约180词）"} ];
-let drafts = [], selected = null, activeTopics = new Set();
-let currentView = "NEW";           // NEW=待生成 / PENDING_REVIEW=已生成待审
-let personas = [];                 // 口吻列表缓存
+const TOPIC_LABELS = { water:"Water", tech:"Tech", ai:"AI", sustainability:"Sustainability", energy:"Energy" };
+const LENGTHS = [ {v:50,label:"Short (~50 words)"}, {v:100,label:"Medium (~100 words)"}, {v:180,label:"Long (~180 words)"} ];
+let drafts = [], selected = null;
+let currentView = "NEW";           // NEW = to generate / PENDING_REVIEW = generated & pending
+let personas = [];                 // cached voices
 
 const api = {
   async get(p){ const r = await fetch(p); return r.json(); },
@@ -148,23 +144,10 @@ const api = {
   async del(p,b){ const r = await fetch(p,{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify(b||{})}); return r.json(); },
 };
 function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),1800); }
-
-async function loadTopics(){
-  const topics = await api.get("/api/topics");
-  const box = document.getElementById("topicChips");
-  box.innerHTML = "";
-  topics.forEach(t=>{
-    const c = document.createElement("span");
-    c.className = "chip" + (activeTopics.has(t)?" on":"");
-    c.textContent = TOPIC_LABELS[t] || t;
-    c.onclick = ()=>{ activeTopics.has(t)?activeTopics.delete(t):activeTopics.add(t); loadTopics(); loadDrafts(); };
-    box.appendChild(c);
-  });
-}
+function fmtTime(ts){ return ts ? new Date(ts*1000).toLocaleString("en-US") : "Never"; }
 
 async function loadDrafts(){
   let url = "/api/drafts?status=" + currentView;
-  activeTopics.forEach(t=> url += "&topics="+encodeURIComponent(t));
   drafts = await api.get(url);
   renderList();
 }
@@ -179,17 +162,17 @@ function renderList(){
   const el = document.getElementById("list");
   if(!drafts.length){
     el.innerHTML = currentView==="NEW"
-      ? '<div class="empty">没有待生成的帖子<br>点右上角「抓取新闻」或「选择信息源」</div>'
-      : '<div class="empty">没有已生成的草稿<br>去「待生成评论」里挑一篇生成</div>';
+      ? '<div class="empty">No posts waiting to be generated.<br>Click "Fetch News" or "Select Sources" above.</div>'
+      : '<div class="empty">No generated drafts yet.<br>Pick a post under "To Generate" and generate one.</div>';
     return;
   }
   el.innerHTML = "";
   drafts.forEach(d=>{
     const div = document.createElement("div");
     div.className = "item" + (selected && selected.id===d.id ? " sel":"");
-    const when = d.created_at ? new Date(d.created_at*1000).toLocaleString("zh-CN") : "";
+    const when = d.created_at ? new Date(d.created_at*1000).toLocaleString("en-US") : "";
     div.innerHTML = `<div class="src">${esc(d.author||"")}</div>
-      <div class="ttl">${esc(d.title||"(无标题)")}</div>
+      <div class="ttl">${esc(d.title||"(no title)")}</div>
       <div class="meta">${when}</div>`;
     div.onclick = ()=>{ selected = d; renderList(); renderDetail(); };
     el.appendChild(div);
@@ -198,50 +181,50 @@ function renderList(){
 
 function renderDetail(){
   const el = document.getElementById("detail");
-  if(!selected){ el.innerHTML = '<div class="empty">左边选一条帖子查看</div>'; return; }
+  if(!selected){ el.innerHTML = '<div class="empty">Select a post on the left to view it.</div>'; return; }
   const d = selected;
   const head = `
     <div class="src">${esc(d.author||"")}</div>
-    <h2>${esc(d.title||"(无标题)")}</h2>
-    ${d.url ? `<a href="${esc(d.url)}" target="_blank">↗ 打开原文</a>` : ""}`;
+    <h2>${esc(d.title||"(no title)")}</h2>
+    ${d.url ? `<a href="${esc(d.url)}" target="_blank">↗ Open original</a>` : ""}`;
 
   if(currentView==="NEW" || !d.draft){
-    // 还没生成评论：显示摘要 + 口吻/长度选择 + 生成按钮
+    // not generated yet: show summary + voice/length pickers + generate button
     const personaOpts = personas.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
     const lenOpts = LENGTHS.map(l=>`<option value="${l.v}"${l.v===100?" selected":""}>${l.label}</option>`).join("");
     el.innerHTML = head + `
-      ${d.summary ? `<div class="card"><h3>原文摘要</h3><div class="draft">${esc(d.summary)}</div></div>` : ""}
+      ${d.summary ? `<div class="card"><h3>Original summary</h3><div class="draft">${esc(d.summary)}</div></div>` : ""}
       <div class="genbox">
         <div class="genrow">
-          <div><label>用哪个口吻</label><select id="genPersona">${personaOpts}</select></div>
-          <div><label>评论长度</label><select id="genLen">${lenOpts}</select></div>
-          <button class="good" id="btnGen">✨ 生成评论</button>
-          <button id="btnSkipItem">✕ 跳过这条</button>
+          <div><label>Voice</label><select id="genPersona">${personaOpts}</select></div>
+          <div><label>Comment length</label><select id="genLen">${lenOpts}</select></div>
+          <button class="good" id="btnGen">✨ Generate comment</button>
+          <button id="btnSkipItem">✕ Skip this one</button>
         </div>
       </div>`;
     document.getElementById("btnGen").onclick = ()=> generateComment(d.id);
     document.getElementById("btnSkipItem").onclick = ()=> setStatus(d.id,"IGNORED");
   } else {
-    // 已生成：显示草稿 + 复制/标记
+    // generated: show draft + copy / mark
     el.innerHTML = head + `
       <div class="card">
-        <h3>AI 生成的评论草稿（英文 + 中文）${d.persona ? ' · 口吻：'+esc(d.persona) : ''}${d.word_limit ? ' · 约'+esc(d.word_limit)+'词' : ''}</h3>
+        <h3>AI draft comment (English + Chinese)${d.persona ? ' · Voice: '+esc(d.persona) : ''}${d.word_limit ? ' · ~'+esc(d.word_limit)+' words' : ''}</h3>
         <div class="draft" id="draftText">${esc(d.draft||"")}</div>
       </div>
       <div class="actions">
-        <button class="good" id="btnCopy">📋 复制草稿</button>
-        <button id="btnRegen">↻ 换口吻/长度重新生成</button>
-        <button id="btnPosted">✓ 标记已发</button>
-        <button id="btnIgnore">✕ 忽略这条</button>
+        <button class="good" id="btnCopy">📋 Copy draft</button>
+        <button id="btnRegen">↻ Regenerate (change voice/length)</button>
+        <button id="btnPosted">✓ Mark as posted</button>
+        <button id="btnIgnore">✕ Ignore</button>
       </div>`;
-    document.getElementById("btnCopy").onclick = ()=>{ navigator.clipboard.writeText(d.draft||""); toast("已复制到剪贴板"); };
+    document.getElementById("btnCopy").onclick = ()=>{ navigator.clipboard.writeText(d.draft||""); toast("Copied to clipboard"); };
     document.getElementById("btnRegen").onclick = ()=>{ regenPanel(d); };
     document.getElementById("btnPosted").onclick = ()=> setStatus(d.id,"POSTED");
     document.getElementById("btnIgnore").onclick = ()=> setStatus(d.id,"IGNORED");
   }
 }
 
-// 已生成的草稿上，展开"换口吻/长度重新生成"控件
+// on a generated draft, expand "regenerate with different voice/length" controls
 function regenPanel(d){
   const el = document.getElementById("detail");
   const personaOpts = personas.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
@@ -249,9 +232,9 @@ function regenPanel(d){
   el.insertAdjacentHTML("beforeend", `
     <div class="genbox" id="regenBox">
       <div class="genrow">
-        <div><label>换个口吻</label><select id="genPersona">${personaOpts}</select></div>
-        <div><label>换个长度</label><select id="genLen">${lenOpts}</select></div>
-        <button class="good" id="btnGen2">✨ 重新生成</button>
+        <div><label>Change voice</label><select id="genPersona">${personaOpts}</select></div>
+        <div><label>Change length</label><select id="genLen">${lenOpts}</select></div>
+        <button class="good" id="btnGen2">✨ Regenerate</button>
       </div>
     </div>`);
   document.getElementById("btnGen2").onclick = ()=> generateComment(d.id);
@@ -261,11 +244,11 @@ async function generateComment(id){
   const persona = document.getElementById("genPersona").value;
   const word_limit = document.getElementById("genLen").value;
   const btn = document.getElementById("btnGen") || document.getElementById("btnGen2");
-  if(btn){ btn.disabled = true; btn.textContent = "生成中…（几秒）"; }
+  if(btn){ btn.disabled = true; btn.textContent = "Generating… (a few seconds)"; }
   const r = await api.post("/api/generate", {draft_id:id, persona, word_limit});
-  if(r.error){ toast("生成出错："+r.error); if(btn){btn.disabled=false; btn.textContent="✨ 生成评论";} return; }
-  toast("已生成评论");
-  // 生成后这条从 NEW 变 PENDING_REVIEW：切到已生成视图并选中它看结果
+  if(r.error){ toast("Generation error: "+r.error); if(btn){btn.disabled=false; btn.textContent="✨ Generate comment";} return; }
+  toast("Comment generated");
+  // after generation this item moves NEW -> PENDING_REVIEW: switch view and reselect it
   currentView = "PENDING_REVIEW";
   document.querySelectorAll(".tab").forEach(b=> b.classList.toggle("primary", b.dataset.view==="PENDING_REVIEW"));
   await loadDrafts();
@@ -275,23 +258,21 @@ async function generateComment(id){
 
 async function setStatus(id,status){
   await api.post("/api/drafts/status",{id,status});
-  toast(status==="POSTED"?"已标记为已发":(status==="IGNORED"?"已跳过/忽略":"已更新"));
+  toast(status==="POSTED"?"Marked as posted":(status==="IGNORED"?"Skipped / ignored":"Updated"));
   selected=null; renderDetail(); loadDrafts();
 }
 
 async function doFetch(){
-  // 顶部「抓取新闻」：只抓不生成。有勾标签就按标签，否则抓全部。
+  // header "Fetch News": fetch only, no generation. Fetches all sources.
   const btn = document.getElementById("btnFetch");
-  btn.disabled = true; btn.textContent = "抓取中…（约1分钟）";
-  const body = {};
-  if(activeTopics.size) body.topics = [...activeTopics];
-  const r = await api.post("/api/fetch", body);
-  btn.disabled = false; btn.textContent = "⟳ 抓取新闻";
-  if(r.error){ toast("抓取出错："+r.error); }
-  else { toast(`抓取完成：新增 ${r.new_items||0} 条待生成`); currentView="NEW"; switchView("NEW"); loadTopics(); }
+  btn.disabled = true; btn.textContent = "Fetching… (~1 min)";
+  const r = await api.post("/api/fetch", {});
+  btn.disabled = false; btn.textContent = "⟳ Fetch News";
+  if(r.error){ toast("Fetch error: "+r.error); }
+  else { toast(`Fetched: ${r.new_items||0} new item(s) to generate`); currentView="NEW"; switchView("NEW"); }
 }
 
-// ── 口吻 persona ──
+// ── voices (persona) ──
 async function loadPersonas(){
   personas = await api.get("/api/personas");
   return personas;
@@ -303,9 +284,9 @@ async function openPersona(){
   list.forEach(p=>{
     const row = document.createElement("div");
     row.className = "feed-row";
-    row.innerHTML = `<span class="fn">${esc(p.name)}</span><span class="ft">${(p.samples||[]).length} 篇范文</span>`;
+    row.innerHTML = `<span class="fn">${esc(p.name)}</span><span class="ft">${(p.samples||[]).length} sample(s)</span>`;
     const edit = document.createElement("button");
-    edit.textContent = "编辑";
+    edit.textContent = "Edit";
     edit.onclick = ()=>{
       document.getElementById("pName").value = p.name;
       document.getElementById("pStyle").value = p.style||"";
@@ -315,8 +296,8 @@ async function openPersona(){
     row.appendChild(edit);
     if(p.id !== "default"){
       const del = document.createElement("button");
-      del.textContent = "删除"; del.style.borderColor="var(--danger)"; del.style.color="var(--danger)";
-      del.onclick = async ()=>{ await api.del("/api/personas",{id:p.id}); openPersona(); toast("已删除"); };
+      del.textContent = "Delete"; del.style.borderColor="var(--danger)"; del.style.color="var(--danger)";
+      del.onclick = async ()=>{ await api.del("/api/personas",{id:p.id}); openPersona(); toast("Deleted"); };
       row.appendChild(del);
     }
     box.appendChild(row);
@@ -328,15 +309,15 @@ async function savePersona(){
   const style = document.getElementById("pStyle").value.trim();
   const samplesRaw = document.getElementById("pSamples").value.trim();
   const samples = samplesRaw ? samplesRaw.split(/\n\s*\n/).map(s=>s.trim()).filter(Boolean) : [];
-  if(!name){ toast("口吻名称不能为空"); return; }
+  if(!name){ toast("Voice name is required"); return; }
   const id = document.getElementById("pSave").dataset.id || "";
   await api.post("/api/personas", {id, name, style, samples});
   document.getElementById("pName").value=""; document.getElementById("pStyle").value=""; document.getElementById("pSamples").value="";
   document.getElementById("pSave").dataset.id = "";
-  openPersona(); loadPersonas(); toast("口吻已保存");
+  openPersona(); loadPersonas(); toast("Voice saved");
 }
 
-// ── 信息源选择（可勾选的全量列表，带标签）──
+// ── source selection (full checkable list with tags + last scanned) ──
 let allFeeds = [];
 async function openSources(){
   allFeeds = await api.get("/api/feeds");
@@ -345,20 +326,21 @@ async function openSources(){
   allFeeds.forEach((f,i)=>{
     const row = document.createElement("div");
     row.className = "src-row";
-    const tags = (f.topics||[]).map(t=>TOPIC_LABELS[t]||t).join("、");
+    const tags = (f.topics||[]).map(t=>TOPIC_LABELS[t]||t).join(", ");
     row.innerHTML = `<input type="checkbox" id="src_${i}" checked>
       <span class="sname">${esc(f.name)}</span>
-      <span class="stags">${esc(tags)}</span>`;
+      <span class="stags">${esc(tags)}</span>
+      <span class="sscan">Last: ${esc(fmtTime(f.last_scanned))}</span>`;
     box.appendChild(row);
   });
-  // 快捷按钮：按标签批量勾选
+  // quick buttons: select all of a tag
   const topicBtns = document.getElementById("srcTopicBtns");
   const topics = [...new Set(allFeeds.flatMap(f=>f.topics||[]))];
   topicBtns.innerHTML = "";
   topics.forEach(t=>{
     const b = document.createElement("button");
     b.style.fontSize = "12px";
-    b.textContent = "只选" + (TOPIC_LABELS[t]||t);
+    b.textContent = "Only " + (TOPIC_LABELS[t]||t);
     b.onclick = ()=> allFeeds.forEach((f,i)=>{ document.getElementById("src_"+i).checked = (f.topics||[]).includes(t); });
     topicBtns.appendChild(b);
   });
@@ -369,20 +351,20 @@ function selectedSourceNames(){
 }
 async function fetchSelected(){
   const names = selectedSourceNames();
-  if(!names.length){ toast("至少选一个信息源"); return; }
+  if(!names.length){ toast("Select at least one source"); return; }
   const btn = document.getElementById("srcFetch");
-  btn.disabled = true; btn.textContent = "抓取中…（约1分钟）";
+  btn.disabled = true; btn.textContent = "Fetching… (~1 min)";
   const r = await api.post("/api/fetch", {feeds:names});
-  btn.disabled = false; btn.textContent = "抓取选中的源";
-  if(r.error){ toast("抓取出错："+r.error); }
+  btn.disabled = false; btn.textContent = "Fetch selected";
+  if(r.error){ toast("Fetch error: "+r.error); }
   else {
-    toast(`抓取完成：新增 ${r.new_items||0} 条待生成`);
+    toast(`Fetched: ${r.new_items||0} new item(s) to generate`);
     document.getElementById("sourcesDlg").close();
-    currentView="NEW"; switchView("NEW"); loadTopics();
+    currentView="NEW"; switchView("NEW");
   }
 }
 
-// ── 关注对象管理 ──
+// ── manage sources ──
 async function openManage(){
   const feeds = await api.get("/api/feeds");
   const box = document.getElementById("feedList");
@@ -390,11 +372,11 @@ async function openManage(){
   feeds.forEach(f=>{
     const row = document.createElement("div");
     row.className = "feed-row";
-    const tags = (f.topics||[]).map(t=>TOPIC_LABELS[t]||t).join("、");
+    const tags = (f.topics||[]).map(t=>TOPIC_LABELS[t]||t).join(", ");
     row.innerHTML = `<span class="fn">${esc(f.name)}</span><span class="ft">${esc(tags)}</span>`;
     const del = document.createElement("button");
-    del.textContent = "删除"; del.style.borderColor="var(--danger)"; del.style.color="var(--danger)";
-    del.onclick = async ()=>{ await api.del("/api/feeds",{name:f.name}); openManage(); loadTopics(); toast("已删除"); };
+    del.textContent = "Delete"; del.style.borderColor="var(--danger)"; del.style.color="var(--danger)";
+    del.onclick = async ()=>{ await api.del("/api/feeds",{name:f.name}); openManage(); toast("Deleted"); };
     row.appendChild(del);
     box.appendChild(row);
   });
@@ -404,16 +386,16 @@ async function addFeed(){
   const name = document.getElementById("nfName").value.trim();
   const url = document.getElementById("nfUrl").value.trim();
   const topics = document.getElementById("nfTopics").value.split(",").map(s=>s.trim()).filter(Boolean);
-  if(!name||!url){ toast("名称和 URL 不能为空"); return; }
+  if(!name||!url){ toast("Name and URL are required"); return; }
   await api.post("/api/feeds",{name,url,topics});
   document.getElementById("nfName").value=""; document.getElementById("nfUrl").value=""; document.getElementById("nfTopics").value="";
-  openManage(); loadTopics(); toast("已添加");
+  openManage(); toast("Added");
 }
 
 function esc(s){ return String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 
 document.getElementById("btnFetch").onclick = doFetch;
-document.getElementById("btnRefresh").onclick = ()=>{ loadDrafts(); loadTopics(); };
+document.getElementById("btnRefresh").onclick = ()=>{ loadDrafts(); };
 document.getElementById("btnManage").onclick = openManage;
 document.getElementById("mgClose").onclick = ()=> document.getElementById("manageDlg").close();
 document.getElementById("nfAdd").onclick = addFeed;
@@ -427,8 +409,8 @@ document.getElementById("srcAll").onclick = ()=> allFeeds.forEach((f,i)=> docume
 document.getElementById("srcNone").onclick = ()=> allFeeds.forEach((f,i)=> document.getElementById("src_"+i).checked = false);
 document.querySelectorAll(".tab").forEach(b=> b.onclick = ()=> switchView(b.dataset.view));
 
-// 初始加载：先拿到口吻（详情里的口吻下拉要用），再拿标签和列表
-(async ()=>{ await loadPersonas(); loadTopics(); loadDrafts(); })();
+// initial load: voices first (detail voice dropdown needs them), then the list
+(async ()=>{ await loadPersonas(); loadDrafts(); })();
 </script>
 </body>
 </html>
