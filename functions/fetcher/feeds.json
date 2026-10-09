@@ -15,6 +15,8 @@
     { "name": "Water Online", "url": "https://news.google.com/rss/search?q=%22Water+Online%22&hl=en-US", "type": "google_news", "topics": ["water"], "water_tier": false },
     { "name": "Bloomberg Green", "url": "https://news.google.com/rss/search?q=Bloomberg+Green&hl=en-US", "type": "google_news", "topics": ["sustainability"], "water_tier": false },
     { "name": "Sustainability Magazine", "url": "https://news.google.com/rss/search?q=%22Sustainability+Magazine%22+sustainabilitymag&hl=en-US", "type": "google_news", "topics": ["sustainability"], "water_tier": false },
-    { "name": "mHUB", "url": "https://news.google.com/rss/search?q=mHUB+Chicago&hl=en-US", "type": "google_news", "topics": ["tech"], "water_tier": false }
+    { "name": "mHUB", "url": "https://news.google.com/rss/search?q=mHUB+Chicago&hl=en-US", "type": "google_news", "topics": ["tech"], "water_tier": false },
+    { "name": "The Climate Pledge", "url": "https://news.google.com/rss/search?q=%22The+Climate+Pledge%22+Amazon&hl=en-US", "type": "google_news", "topics": ["sustainability"], "water_tier": false },
+    { "name": "CRN", "url": "https://news.google.com/rss/search?q=CRN+channel+technology+news&hl=en-US", "type": "google_news", "topics": ["tech"], "water_tier": false }
   ]
 }

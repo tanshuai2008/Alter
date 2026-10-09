@@ -4,25 +4,27 @@
 > 所有源均已用 Python 脚本实测验证（HTTP 200 + 真实 feed + 抓到首条标题），验证日期 2026-10-08。
 > LinkedIn 本身不开放个人开发者 API，自动抓取会违规封号，因此一律走官方 RSS 或 Google News 兜底。
 
-## 生效中的新闻源（15 家）
+## 生效中的新闻源（17 家）
 
-| # | 关注对象 | 新闻源 URL | 类型 |
-|---|---|---|---|
-| 1 | Inside Water Magazine | https://insidewater.com.au/feed/ | 自家 RSS |
-| 2 | Water Environment Federation | https://www.wef.org/category/news/feed/ | 自家 RSS（仅新闻） |
-| 3 | Grundfos | https://news.google.com/rss/search?q=Grundfos+water&hl=en-US | Google News 兜底 |
-| 4 | Water Online | https://news.google.com/rss/search?q=%22Water+Online%22&hl=en-US | Google News 兜底 |
-| 5 | Water Resilience Coalition | https://ceowatermandate.org/feed/ | 自家 RSS |
-| 6 | Alliance for Water Stewardship | https://a4ws.org/feed/ | 自家 RSS |
-| 7 | US Water Alliance | https://uswateralliance.org/feed/ | 自家 RSS |
-| 8 | Trellis Group（原 GreenBiz） | https://trellis.net/feed/ | 自家 RSS |
-| 9 | AWS for Energy & Utilities | https://aws.amazon.com/blogs/industries/category/industries/energy/feed/ | 自家 RSS（已升级为更宽的 energy 分类） |
-| 10 | TechCrunch | https://techcrunch.com/feed/ | 自家 RSS |
-| 11 | MIT Technology Review | https://www.technologyreview.com/feed/ | 自家 RSS |
-| 12 | Bloomberg (Green) | https://news.google.com/rss/search?q=Bloomberg+Green&hl=en-US | Google News 兜底 |
-| 13 | Sustainability Magazine | https://news.google.com/rss/search?q=%22Sustainability+Magazine%22+sustainabilitymag&hl=en-US | Google News 兜底 |
-| 14 | mHUB | https://news.google.com/rss/search?q=mHUB+Chicago&hl=en-US | Google News 兜底 |
-| 15 | AI Engineer | https://www.latent.space/feed | 自家 RSS（创始人 swyx 的 Latent Space，已升级替换 Google News） |
+| # | 关注对象 | 新闻源 URL | 类型 | 标签 |
+|---|---|---|---|---|
+| 1 | Inside Water Magazine | https://insidewater.com.au/feed/ | 自家 RSS | water |
+| 2 | Water Environment Federation | https://www.wef.org/category/news/feed/ | 自家 RSS（仅新闻） | water |
+| 3 | Grundfos | https://news.google.com/rss/search?q=Grundfos+water&hl=en-US | Google News 兜底 | water |
+| 4 | Water Online | https://news.google.com/rss/search?q=%22Water+Online%22&hl=en-US | Google News 兜底 | water |
+| 5 | Water Resilience Coalition | https://ceowatermandate.org/feed/ | 自家 RSS | water, sustainability |
+| 6 | Alliance for Water Stewardship | https://a4ws.org/feed/ | 自家 RSS | water, sustainability |
+| 7 | US Water Alliance | https://uswateralliance.org/feed/ | 自家 RSS | water |
+| 8 | Trellis Group（原 GreenBiz） | https://trellis.net/feed/ | 自家 RSS | sustainability |
+| 9 | AWS for Energy & Utilities | https://aws.amazon.com/blogs/industries/category/industries/energy/feed/ | 自家 RSS（已升级为更宽的 energy 分类） | tech, energy |
+| 10 | TechCrunch | https://techcrunch.com/feed/ | 自家 RSS | tech |
+| 11 | MIT Technology Review | https://www.technologyreview.com/feed/ | 自家 RSS | tech |
+| 12 | Bloomberg (Green) | https://news.google.com/rss/search?q=Bloomberg+Green&hl=en-US | Google News 兜底 | sustainability |
+| 13 | Sustainability Magazine | https://news.google.com/rss/search?q=%22Sustainability+Magazine%22+sustainabilitymag&hl=en-US | Google News 兜底 | sustainability |
+| 14 | mHUB | https://news.google.com/rss/search?q=mHUB+Chicago&hl=en-US | Google News 兜底 | tech |
+| 15 | AI Engineer | https://www.latent.space/feed | 自家 RSS（创始人 swyx 的 Latent Space，已升级替换 Google News） | ai, tech |
+| 16 | The Climate Pledge | https://news.google.com/rss/search?q=%22The+Climate+Pledge%22+Amazon&hl=en-US | Google News 兜底（无自家 RSS，/feed/ 404；2026-10-09 实测可抓） | sustainability |
+| 17 | CRN | https://news.google.com/rss/search?q=CRN+channel+technology+news&hl=en-US | Google News 兜底（科技渠道媒体，无可发现公开 RSS；2026-10-09 实测可抓） | tech |
 
 ## 已放弃
 
