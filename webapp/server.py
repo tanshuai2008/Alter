@@ -128,14 +128,8 @@ def update_status(draft_id: str, status: str):
     )
 
 
-# ── 手动触发抓取 ────────────────────────────────────────
-def trigger_fetch(topics=None, persona=None) -> dict:
-    """同步调用 fetcher Lambda。topics 为空则抓全部；persona 为口吻 id。"""
-    payload = {}
-    if topics:
-        payload["topics"] = topics
-    if persona:
-        payload["persona"] = persona
+# ── 手动触发抓取 / 单篇生成 ──────────────────────────────
+def _invoke_fetcher(payload: dict) -> dict:
     resp = _lambda.invoke(
         FunctionName=FETCHER_FUNCTION,
         InvocationType="RequestResponse",
@@ -146,6 +140,33 @@ def trigger_fetch(topics=None, persona=None) -> dict:
         return json.loads(raw)
     except Exception:  # noqa: BLE001
         return {"raw": raw}
+
+
+def trigger_fetch(topics=None, feeds=None, generate=False, persona=None, word_limit=None) -> dict:
+    """同步调用 fetcher Lambda 抓取。默认只抓不生成（A 方案）。
+    feeds=点选的信息源名字列表；topics=按标签；两者都空=全部/定时默认。"""
+    payload = {}
+    if feeds:
+        payload["feeds"] = feeds
+    elif topics:
+        payload["topics"] = topics
+    if generate:
+        payload["generate"] = True
+        if persona:
+            payload["persona"] = persona
+        if word_limit:
+            payload["word_limit"] = int(word_limit)
+    return _invoke_fetcher(payload)
+
+
+def trigger_generate(draft_id: str, persona=None, word_limit=None) -> dict:
+    """对一条已抓取(NEW)的帖子，用指定口吻+长度生成评论。"""
+    payload = {"action": "generate", "draft_id": draft_id}
+    if persona:
+        payload["persona"] = persona
+    if word_limit:
+        payload["word_limit"] = int(word_limit)
+    return _invoke_fetcher(payload)
 
 
 # ── HTTP 处理 ───────────────────────────────────────────
@@ -223,8 +244,18 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json({"ok": True})
             elif path == "/api/fetch":
                 topics = body.get("topics") or None
+                feeds = body.get("feeds") or None
+                generate = bool(body.get("generate", False))
                 persona = body.get("persona") or None
-                self._send_json(trigger_fetch(topics=topics, persona=persona))
+                word_limit = body.get("word_limit") or None
+                self._send_json(trigger_fetch(
+                    topics=topics, feeds=feeds, generate=generate,
+                    persona=persona, word_limit=word_limit))
+            elif path == "/api/generate":
+                self._send_json(trigger_generate(
+                    body["draft_id"],
+                    persona=body.get("persona") or None,
+                    word_limit=body.get("word_limit") or None))
             elif path == "/api/personas":
                 # 新增或编辑：有 id 则覆盖同 id，否则按 name 生成 id 新增
                 data = load_personas_file()

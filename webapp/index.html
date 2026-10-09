@@ -51,23 +51,55 @@
   .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--accent2); color: #06281f; padding: 10px 20px; border-radius: 8px; font-weight: 600; opacity: 0; transition: opacity .2s; pointer-events: none; }
   .toast.show { opacity: 1; }
   .statusbadge { font-size: 11px; padding: 2px 7px; border-radius: 10px; background: var(--chip); color: var(--muted); }
+  .tab { font-size: 13px; }
+  .tab.primary { background: var(--accent); border-color: var(--accent); color:#fff; }
+  .genbox { background: var(--panel); border: 1px dashed var(--border); border-radius: 10px; padding: 16px 18px; margin-top: 16px; }
+  .genbox label { display:block; font-size:12px; color:var(--muted); margin:0 0 4px; }
+  .genbox select { padding:7px 10px; border-radius:8px; background:var(--panel2); color:var(--text); border:1px solid var(--border); font-size:13px; }
+  .genrow { display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; }
+  .src-row { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
+  .src-row input[type=checkbox]{ width:16px; height:16px; }
+  .src-row .sname { flex:1; }
+  .src-row .stags { color:var(--muted); font-size:11px; }
 </style>
 </head>
 <body>
 <header>
   <h1>🪞 Alter 待审草稿</h1>
   <div class="chips" id="topicChips"></div>
-  <select id="personaSel" title="抓取时模仿的口吻" style="padding:6px 8px;border-radius:8px;background:var(--panel2);color:var(--text);border:1px solid var(--border);font-size:13px;"></select>
-  <button class="primary" id="btnFetch">⟳ 手动抓取</button>
+  <button id="btnSources">📋 选择信息源</button>
+  <button class="primary" id="btnFetch">⟳ 抓取新闻</button>
   <div class="spacer"></div>
   <button id="btnPersona">管理口吻</button>
   <button id="btnManage">管理关注对象</button>
   <button id="btnRefresh">刷新列表</button>
 </header>
+<div id="viewTabs" style="padding:8px 18px;background:var(--panel);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;">
+  <span style="color:var(--muted);font-size:12px;margin-right:4px;">查看：</span>
+  <button class="tab primary" data-view="NEW">🆕 待生成评论</button>
+  <button class="tab" data-view="PENDING_REVIEW">✍ 已生成待审</button>
+</div>
 <main>
   <div id="list"></div>
-  <div id="detail"><div class="empty">左边选一条草稿查看</div></div>
+  <div id="detail"><div class="empty">左边选一条帖子查看</div></div>
 </main>
+
+<dialog id="sourcesDlg">
+  <div class="dlg-body">
+    <h3>选择要抓取的信息源</h3>
+    <p style="color:var(--muted);font-size:12px;margin:0 0 10px;">勾选哪几家，「抓取新闻」就只抓哪几家。标签只是分类说明，可点下方快捷按钮批量勾选。</p>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+      <button id="srcAll" style="font-size:12px;">全选</button>
+      <button id="srcNone" style="font-size:12px;">全不选</button>
+      <span id="srcTopicBtns" style="display:flex;gap:6px;flex-wrap:wrap;"></span>
+    </div>
+    <div id="sourceList" style="max-height:340px;overflow-y:auto;"></div>
+    <div class="dlg-actions">
+      <button id="srcFetch" class="good">抓取选中的源</button>
+      <button id="srcClose">关闭</button>
+    </div>
+  </div>
+</dialog>
 
 <dialog id="manageDlg">
   <div class="dlg-body">
@@ -105,7 +137,10 @@
 
 <script>
 const TOPIC_LABELS = { water:"水务", tech:"科技", ai:"AI", sustainability:"可持续", energy:"能源" };
+const LENGTHS = [ {v:50,label:"精简（约50词）"}, {v:100,label:"中等（约100词）"}, {v:180,label:"长（约180词）"} ];
 let drafts = [], selected = null, activeTopics = new Set();
+let currentView = "NEW";           // NEW=待生成 / PENDING_REVIEW=已生成待审
+let personas = [];                 // 口吻列表缓存
 
 const api = {
   async get(p){ const r = await fetch(p); return r.json(); },
@@ -128,15 +163,26 @@ async function loadTopics(){
 }
 
 async function loadDrafts(){
-  let url = "/api/drafts?status=PENDING_REVIEW";
+  let url = "/api/drafts?status=" + currentView;
   activeTopics.forEach(t=> url += "&topics="+encodeURIComponent(t));
   drafts = await api.get(url);
   renderList();
 }
 
+function switchView(v){
+  currentView = v; selected = null;
+  document.querySelectorAll(".tab").forEach(b=> b.classList.toggle("primary", b.dataset.view===v));
+  renderDetail(); loadDrafts();
+}
+
 function renderList(){
   const el = document.getElementById("list");
-  if(!drafts.length){ el.innerHTML = '<div class="empty">没有待审草稿<br>试试点右上角「手动抓取」</div>'; return; }
+  if(!drafts.length){
+    el.innerHTML = currentView==="NEW"
+      ? '<div class="empty">没有待生成的帖子<br>点右上角「抓取新闻」或「选择信息源」</div>'
+      : '<div class="empty">没有已生成的草稿<br>去「待生成评论」里挑一篇生成</div>';
+    return;
+  }
   el.innerHTML = "";
   drafts.forEach(d=>{
     const div = document.createElement("div");
@@ -152,58 +198,103 @@ function renderList(){
 
 function renderDetail(){
   const el = document.getElementById("detail");
-  if(!selected){ el.innerHTML = '<div class="empty">左边选一条草稿查看</div>'; return; }
+  if(!selected){ el.innerHTML = '<div class="empty">左边选一条帖子查看</div>'; return; }
   const d = selected;
-  el.innerHTML = `
+  const head = `
     <div class="src">${esc(d.author||"")}</div>
     <h2>${esc(d.title||"(无标题)")}</h2>
-    ${d.url ? `<a href="${esc(d.url)}" target="_blank">↗ 打开原文</a>` : ""}
-    <div class="card">
-      <h3>AI 生成的评论草稿（英文 + 中文）${d.persona ? ' · 口吻：'+esc(d.persona) : ''}</h3>
-      <div class="draft" id="draftText">${esc(d.draft||"")}</div>
-    </div>
-    <div class="actions">
-      <button class="good" id="btnCopy">📋 复制草稿</button>
-      <button id="btnPosted">✓ 标记已发</button>
-      <button id="btnIgnore">✕ 忽略这条</button>
-    </div>`;
-  document.getElementById("btnCopy").onclick = ()=>{ navigator.clipboard.writeText(d.draft||""); toast("已复制到剪贴板"); };
-  document.getElementById("btnPosted").onclick = ()=> setStatus(d.id,"POSTED");
-  document.getElementById("btnIgnore").onclick = ()=> setStatus(d.id,"IGNORED");
+    ${d.url ? `<a href="${esc(d.url)}" target="_blank">↗ 打开原文</a>` : ""}`;
+
+  if(currentView==="NEW" || !d.draft){
+    // 还没生成评论：显示摘要 + 口吻/长度选择 + 生成按钮
+    const personaOpts = personas.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
+    const lenOpts = LENGTHS.map(l=>`<option value="${l.v}"${l.v===100?" selected":""}>${l.label}</option>`).join("");
+    el.innerHTML = head + `
+      ${d.summary ? `<div class="card"><h3>原文摘要</h3><div class="draft">${esc(d.summary)}</div></div>` : ""}
+      <div class="genbox">
+        <div class="genrow">
+          <div><label>用哪个口吻</label><select id="genPersona">${personaOpts}</select></div>
+          <div><label>评论长度</label><select id="genLen">${lenOpts}</select></div>
+          <button class="good" id="btnGen">✨ 生成评论</button>
+          <button id="btnSkipItem">✕ 跳过这条</button>
+        </div>
+      </div>`;
+    document.getElementById("btnGen").onclick = ()=> generateComment(d.id);
+    document.getElementById("btnSkipItem").onclick = ()=> setStatus(d.id,"IGNORED");
+  } else {
+    // 已生成：显示草稿 + 复制/标记
+    el.innerHTML = head + `
+      <div class="card">
+        <h3>AI 生成的评论草稿（英文 + 中文）${d.persona ? ' · 口吻：'+esc(d.persona) : ''}${d.word_limit ? ' · 约'+esc(d.word_limit)+'词' : ''}</h3>
+        <div class="draft" id="draftText">${esc(d.draft||"")}</div>
+      </div>
+      <div class="actions">
+        <button class="good" id="btnCopy">📋 复制草稿</button>
+        <button id="btnRegen">↻ 换口吻/长度重新生成</button>
+        <button id="btnPosted">✓ 标记已发</button>
+        <button id="btnIgnore">✕ 忽略这条</button>
+      </div>`;
+    document.getElementById("btnCopy").onclick = ()=>{ navigator.clipboard.writeText(d.draft||""); toast("已复制到剪贴板"); };
+    document.getElementById("btnRegen").onclick = ()=>{ regenPanel(d); };
+    document.getElementById("btnPosted").onclick = ()=> setStatus(d.id,"POSTED");
+    document.getElementById("btnIgnore").onclick = ()=> setStatus(d.id,"IGNORED");
+  }
+}
+
+// 已生成的草稿上，展开"换口吻/长度重新生成"控件
+function regenPanel(d){
+  const el = document.getElementById("detail");
+  const personaOpts = personas.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
+  const lenOpts = LENGTHS.map(l=>`<option value="${l.v}"${l.v===100?" selected":""}>${l.label}</option>`).join("");
+  el.insertAdjacentHTML("beforeend", `
+    <div class="genbox" id="regenBox">
+      <div class="genrow">
+        <div><label>换个口吻</label><select id="genPersona">${personaOpts}</select></div>
+        <div><label>换个长度</label><select id="genLen">${lenOpts}</select></div>
+        <button class="good" id="btnGen2">✨ 重新生成</button>
+      </div>
+    </div>`);
+  document.getElementById("btnGen2").onclick = ()=> generateComment(d.id);
+}
+
+async function generateComment(id){
+  const persona = document.getElementById("genPersona").value;
+  const word_limit = document.getElementById("genLen").value;
+  const btn = document.getElementById("btnGen") || document.getElementById("btnGen2");
+  if(btn){ btn.disabled = true; btn.textContent = "生成中…（几秒）"; }
+  const r = await api.post("/api/generate", {draft_id:id, persona, word_limit});
+  if(r.error){ toast("生成出错："+r.error); if(btn){btn.disabled=false; btn.textContent="✨ 生成评论";} return; }
+  toast("已生成评论");
+  // 生成后这条从 NEW 变 PENDING_REVIEW：切到已生成视图并选中它看结果
+  currentView = "PENDING_REVIEW";
+  document.querySelectorAll(".tab").forEach(b=> b.classList.toggle("primary", b.dataset.view==="PENDING_REVIEW"));
+  await loadDrafts();
+  selected = drafts.find(x=>x.id===id) || null;
+  renderList(); renderDetail();
 }
 
 async function setStatus(id,status){
   await api.post("/api/drafts/status",{id,status});
-  toast(status==="POSTED"?"已标记为已发":"已忽略");
+  toast(status==="POSTED"?"已标记为已发":(status==="IGNORED"?"已跳过/忽略":"已更新"));
   selected=null; renderDetail(); loadDrafts();
 }
 
 async function doFetch(){
+  // 顶部「抓取新闻」：只抓不生成。有勾标签就按标签，否则抓全部。
   const btn = document.getElementById("btnFetch");
   btn.disabled = true; btn.textContent = "抓取中…（约1分钟）";
   const body = {};
   if(activeTopics.size) body.topics = [...activeTopics];
-  const persona = document.getElementById("personaSel").value;
-  if(persona && persona !== "default") body.persona = persona;
   const r = await api.post("/api/fetch", body);
-  btn.disabled = false; btn.textContent = "⟳ 手动抓取";
+  btn.disabled = false; btn.textContent = "⟳ 抓取新闻";
   if(r.error){ toast("抓取出错："+r.error); }
-  else { toast(`抓取完成：新增 ${r.new_drafts||0} 条草稿`); loadDrafts(); loadTopics(); }
+  else { toast(`抓取完成：新增 ${r.new_items||0} 条待生成`); currentView="NEW"; switchView("NEW"); loadTopics(); }
 }
 
 // ── 口吻 persona ──
 async function loadPersonas(){
-  const list = await api.get("/api/personas");
-  const sel = document.getElementById("personaSel");
-  const cur = sel.value;
-  sel.innerHTML = "";
-  list.forEach(p=>{
-    const o = document.createElement("option");
-    o.value = p.id; o.textContent = "口吻：" + p.name;
-    sel.appendChild(o);
-  });
-  if([...sel.options].some(o=>o.value===cur)) sel.value = cur;
-  return list;
+  personas = await api.get("/api/personas");
+  return personas;
 }
 async function openPersona(){
   const list = await loadPersonas();
@@ -245,6 +336,52 @@ async function savePersona(){
   openPersona(); loadPersonas(); toast("口吻已保存");
 }
 
+// ── 信息源选择（可勾选的全量列表，带标签）──
+let allFeeds = [];
+async function openSources(){
+  allFeeds = await api.get("/api/feeds");
+  const box = document.getElementById("sourceList");
+  box.innerHTML = "";
+  allFeeds.forEach((f,i)=>{
+    const row = document.createElement("div");
+    row.className = "src-row";
+    const tags = (f.topics||[]).map(t=>TOPIC_LABELS[t]||t).join("、");
+    row.innerHTML = `<input type="checkbox" id="src_${i}" checked>
+      <span class="sname">${esc(f.name)}</span>
+      <span class="stags">${esc(tags)}</span>`;
+    box.appendChild(row);
+  });
+  // 快捷按钮：按标签批量勾选
+  const topicBtns = document.getElementById("srcTopicBtns");
+  const topics = [...new Set(allFeeds.flatMap(f=>f.topics||[]))];
+  topicBtns.innerHTML = "";
+  topics.forEach(t=>{
+    const b = document.createElement("button");
+    b.style.fontSize = "12px";
+    b.textContent = "只选" + (TOPIC_LABELS[t]||t);
+    b.onclick = ()=> allFeeds.forEach((f,i)=>{ document.getElementById("src_"+i).checked = (f.topics||[]).includes(t); });
+    topicBtns.appendChild(b);
+  });
+  document.getElementById("sourcesDlg").showModal();
+}
+function selectedSourceNames(){
+  return allFeeds.filter((f,i)=>document.getElementById("src_"+i)?.checked).map(f=>f.name);
+}
+async function fetchSelected(){
+  const names = selectedSourceNames();
+  if(!names.length){ toast("至少选一个信息源"); return; }
+  const btn = document.getElementById("srcFetch");
+  btn.disabled = true; btn.textContent = "抓取中…（约1分钟）";
+  const r = await api.post("/api/fetch", {feeds:names});
+  btn.disabled = false; btn.textContent = "抓取选中的源";
+  if(r.error){ toast("抓取出错："+r.error); }
+  else {
+    toast(`抓取完成：新增 ${r.new_items||0} 条待生成`);
+    document.getElementById("sourcesDlg").close();
+    currentView="NEW"; switchView("NEW"); loadTopics();
+  }
+}
+
 // ── 关注对象管理 ──
 async function openManage(){
   const feeds = await api.get("/api/feeds");
@@ -283,8 +420,15 @@ document.getElementById("nfAdd").onclick = addFeed;
 document.getElementById("btnPersona").onclick = openPersona;
 document.getElementById("pClose").onclick = ()=> document.getElementById("personaDlg").close();
 document.getElementById("pSave").onclick = savePersona;
+document.getElementById("btnSources").onclick = openSources;
+document.getElementById("srcClose").onclick = ()=> document.getElementById("sourcesDlg").close();
+document.getElementById("srcFetch").onclick = fetchSelected;
+document.getElementById("srcAll").onclick = ()=> allFeeds.forEach((f,i)=> document.getElementById("src_"+i).checked = true);
+document.getElementById("srcNone").onclick = ()=> allFeeds.forEach((f,i)=> document.getElementById("src_"+i).checked = false);
+document.querySelectorAll(".tab").forEach(b=> b.onclick = ()=> switchView(b.dataset.view));
 
-loadTopics(); loadDrafts(); loadPersonas();
+// 初始加载：先拿到口吻（详情里的口吻下拉要用），再拿标签和列表
+(async ()=>{ await loadPersonas(); loadTopics(); loadDrafts(); })();
 </script>
 </body>
 </html>

@@ -46,13 +46,18 @@ _seen = _dynamodb.Table(SEEN_TABLE_NAME)
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
 
-def load_feeds(topics=None) -> list:
-    """加载源。topics 非空时只保留含任一指定标签的源；
-    否则遵循 WATER_TIER_ONLY 开关（定时任务用）。"""
+def load_feeds(topics=None, names=None) -> list:
+    """加载源。
+    - names 非空：只保留名字在列表里的源（网页"点选信息源"用，最精确）。
+    - topics 非空：只保留含任一指定标签的源（按类扫描）。
+    - 都为空：遵循 WATER_TIER_ONLY 开关（定时任务用）。"""
     with open(os.path.join(_HERE, "feeds.json"), "r", encoding="utf-8") as f:
         data = json.load(f)
     feeds = data.get("feeds", [])
-    if topics:
+    if names:
+        name_set = set(names)
+        feeds = [x for x in feeds if x.get("name") in name_set]
+    elif topics:
         topic_set = set(topics)
         feeds = [x for x in feeds if set(x.get("topics", [])) & topic_set]
     elif WATER_TIER_ONLY:
@@ -120,8 +125,9 @@ def persona_block(persona: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def build_prompt(post: dict, persona: dict = None) -> str:
+def build_prompt(post: dict, persona: dict = None, word_limit: int = None) -> str:
     style_line = persona.get("style") if persona else COMMENT_TONE
+    limit = word_limit or COMMENT_MAX_WORDS
     return (
         f"You are a practitioner with real, in-depth insight in the relevant field. "
         f"Write a social-media comment draft on the item below. "
@@ -129,9 +135,9 @@ def build_prompt(post: dict, persona: dict = None) -> str:
         f"no obvious AI tone.\n"
         f"{persona_block(persona)}"
         f"\nOutput EXACTLY two paragraphs, in this order:\n"
-        f"1) First an ENGLISH paragraph (<= {COMMENT_MAX_WORDS} words).\n"
+        f"1) First an ENGLISH paragraph (<= {limit} words).\n"
         f"2) Then a blank line, then a SIMPLIFIED CHINESE paragraph that conveys the "
-        f"same point (not a word-for-word translation; natural Chinese, <= {COMMENT_MAX_WORDS} 字).\n"
+        f"same point (not a word-for-word translation; natural Chinese, <= {limit} 字).\n"
         f"Do not add any labels, headers, or quotation marks around the paragraphs.\n\n"
         f"Title: {post['title']}\n"
         f"Summary: {post['summary']}\n"
@@ -140,47 +146,114 @@ def build_prompt(post: dict, persona: dict = None) -> str:
     )
 
 
-def generate_draft(post: dict, persona: dict = None) -> str:
+def generate_draft(post: dict, persona: dict = None, word_limit: int = None) -> str:
+    # 输出 token 上限随词数档位放宽：长档需要更多 token 才不被截断
+    limit = word_limit or COMMENT_MAX_WORDS
+    max_tokens = max(600, int(limit) * 6)
     body = {
         "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": 600,
-        "messages": [{"role": "user", "content": build_prompt(post, persona)}],
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": build_prompt(post, persona, word_limit)}],
     }
     resp = _bedrock.invoke_model(modelId=MODEL_ID, body=json.dumps(body))
     payload = json.loads(resp["body"].read())
     return payload["content"][0]["text"].strip()
 
 
-def save_draft(source_name: str, entry, draft: str, persona_name: str = ""):
+def save_draft(source_name: str, entry, draft: str, persona_name: str = "",
+               status: str = "PENDING_REVIEW", topics=None) -> str:
+    """存一条草稿。draft 为空串时表示"只抓未生成"（状态 NEW）。返回新 id。"""
+    item_id = str(uuid.uuid4())
     _table.put_item(
         Item={
-            "id": str(uuid.uuid4()),
+            "id": item_id,
             "created_at": int(time.time()),
             "author": source_name,
             "title": getattr(entry, "title", ""),
             "url": getattr(entry, "link", ""),
+            "summary": getattr(entry, "summary", "")[:1000],
+            "topics": topics or [],
             "draft": draft,
             "persona": persona_name,  # 本条草稿用的口吻（空=通用）
-            "status": "PENDING_REVIEW",  # 待真人审核 —— 永不自动发布
+            "status": status,  # NEW=只抓未生成 / PENDING_REVIEW=已生成待审
         }
     )
+    return item_id
+
+
+def _entry_from_item(item: dict):
+    """把 DynamoDB 里的一条 NEW 草稿还原成一个有 title/link 属性的轻量对象，
+    复用 save_draft 的 getattr 取值方式。"""
+    class _E:
+        pass
+    e = _E()
+    e.title = item.get("title", "")
+    e.link = item.get("url", "")
+    e.summary = item.get("summary", "")
+    return e
+
+
+def handle_generate(event) -> dict:
+    """单篇生成：读某条 NEW 草稿，用指定口吻+长度生成评论，原地更新为 PENDING_REVIEW。"""
+    draft_id = event.get("draft_id")
+    if not draft_id:
+        return {"error": "missing draft_id"}
+    persona = load_persona(event.get("persona"))
+    persona_name = persona.get("name", "") if persona else ""
+    word_limit = int(event.get("word_limit") or COMMENT_MAX_WORDS)
+
+    resp = _table.get_item(Key={"id": draft_id})
+    item = resp.get("Item")
+    if not item:
+        return {"error": f"draft {draft_id} not found"}
+
+    post = {
+        "author": item.get("author", ""),
+        "title": item.get("title", ""),
+        "summary": (item.get("summary") or "")[:1000],
+        "url": item.get("url", ""),
+    }
+    draft = generate_draft(post, persona, word_limit)
+    _table.update_item(
+        Key={"id": draft_id},
+        UpdateExpression="SET #d = :d, persona = :p, #s = :s, word_limit = :w, generated_at = :g",
+        ExpressionAttributeNames={"#d": "draft", "#s": "status"},
+        ExpressionAttributeValues={
+            ":d": draft, ":p": persona_name, ":s": "PENDING_REVIEW",
+            ":w": word_limit, ":g": int(time.time()),
+        },
+    )
+    return {"ok": True, "id": draft_id, "persona": persona_name or "通用",
+            "word_limit": word_limit, "draft": draft}
 
 
 def lambda_handler(event, context):
-    # 事件可带 topics 列表（按标签只抓某些源）和 persona（口吻 id）
-    topics = None
-    persona_id = None
-    if isinstance(event, dict):
-        topics = event.get("topics") or None
-        persona_id = event.get("persona") or None
-    persona = load_persona(persona_id)
+    if not isinstance(event, dict):
+        event = {}
+
+    # 动作一：单篇生成评论（网页逐篇点"生成"时调用）
+    if event.get("action") == "generate":
+        result = handle_generate(event)
+        print(json.dumps(result, ensure_ascii=False))
+        return result
+
+    # 动作二：抓取新闻。默认只抓不生成（存 status=NEW，draft 空），
+    # 评论由网页逐篇按需生成，省 token。
+    # 事件可带：topics(按标签) / feeds(按名字点选) / generate(True 时抓时即生成，兼容旧行为)
+    topics = event.get("topics") or None
+    names = event.get("feeds") or None
+    generate_now = bool(event.get("generate", False))
+    persona = load_persona(event.get("persona")) if generate_now else None
     persona_name = persona.get("name", "") if persona else ""
-    feeds = load_feeds(topics=topics)
-    stats = {"feeds": len(feeds), "new_drafts": 0, "skipped": 0,
-             "persona": persona_name or "通用", "errors": []}
+    word_limit = int(event.get("word_limit") or COMMENT_MAX_WORDS)
+
+    feeds = load_feeds(topics=topics, names=names)
+    stats = {"feeds": len(feeds), "new_items": 0, "new_drafts": 0, "skipped": 0,
+             "mode": "generate" if generate_now else "fetch_only", "errors": []}
 
     for feed in feeds:
         name, url = feed["name"], feed["url"]
+        feed_topics = feed.get("topics", [])
         try:
             parsed = feedparser.parse(url)
         except Exception as e:  # noqa: BLE001
@@ -197,24 +270,29 @@ def lambda_handler(event, context):
                 continue
             if not is_recent(entry):
                 stats["skipped"] += 1
-                # 旧条目也标记为已见，避免下次重复判断
                 mark_seen(key)
                 continue
 
-            post = {
-                "author": name,
-                "title": getattr(entry, "title", ""),
-                "summary": getattr(entry, "summary", "")[:1000],
-                "url": getattr(entry, "link", ""),
-            }
             try:
-                draft = generate_draft(post, persona)
-                save_draft(name, entry, draft, persona_name)
+                if generate_now:
+                    post = {
+                        "author": name,
+                        "title": getattr(entry, "title", ""),
+                        "summary": getattr(entry, "summary", "")[:1000],
+                        "url": getattr(entry, "link", ""),
+                    }
+                    draft = generate_draft(post, persona, word_limit)
+                    save_draft(name, entry, draft, persona_name,
+                               status="PENDING_REVIEW", topics=feed_topics)
+                    stats["new_drafts"] += 1
+                else:
+                    # 只抓不生成：存一条空草稿等用户逐篇生成
+                    save_draft(name, entry, "", "", status="NEW", topics=feed_topics)
+                    stats["new_items"] += 1
                 mark_seen(key)
-                stats["new_drafts"] += 1
                 count += 1
             except Exception as e:  # noqa: BLE001
-                stats["errors"].append(f"{name}: draft error {type(e).__name__}: {e}")
+                stats["errors"].append(f"{name}: error {type(e).__name__}: {e}")
 
     print(json.dumps(stats, ensure_ascii=False))
     return stats
