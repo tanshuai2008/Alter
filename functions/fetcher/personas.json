@@ -1,15 +1,15 @@
 {
-  "_comment": "Alter 口吻样板（persona）配置。每个口吻 = 风格说明 + 若干范文，用于 few-shot 让 AI 模仿该口吻的英文表达。范文仅供学习写作风格，不照搬发布。id 为英文短名（代码用），name 给人看。",
+  "_comment": "Alter 口吻样板（persona）配置。每个口吻 = 风格说明 + 若干范文，用于 few-shot 让 AI 模仿该口吻的英文表达。范文仅供学习写作风格，不照搬发布。id 为英文短名（代码用），name 给人看。顺序按职位高低排列（default 在最前）。",
   "personas": [
     {
       "id": "default",
-      "name": "默认（不模仿口吻）",
+      "name": "Default (no voice)",
       "style": "专业、有见地、简洁，像一个懂行的从业者在真诚评论",
       "samples": []
     },
     {
       "id": "cso",
-      "name": "首席可持续官 (CSO)",
+      "name": "Chief Sustainability Officer (CSO)",
       "style": "首席可持续官口吻：从一个有画面感或人情味的切入点开场（一次活动、一次对话、一个具体瞬间），再过渡到有分量的事实与数字支撑论点；喜欢用结构化的要点（1-2-3 或图标项符号）把成果讲清楚；语气真诚、乐观、负责任，常点名感谢合作伙伴与团队；结尾放一句面向未来或呼吁的话，并附上延伸阅读链接。观点落在'大企业如何在增长的同时真正推进可持续'这一宏观命题上。",
       "samples": [
         "Can you scale sustainability while growing a business? The challenges are numerous and varied - but the answer is still \"yes\".\n\nHere's three truths I shared about Amazon with Forbes:\n\n1-Meaningful change isn't always linear. Some decisions we've made are resulting in progress right now. Other decisions will reap benefits in a few years. That's the reality of making big bets and doing something that's never been done before.\n2-Meeting the unpredictable moments. The pandemic brought challenges. Supply chain disruptions brought challenges. And now the AI buildout brings challenges. The key is staying locked on our long-term goal.\n3-Real progress is happening. There are more than 55,000 electric delivery vehicles on the road. We support more than 700 carbon-free energy projects globally, totaling over 40 gigawatts of capacity. The Climate Pledge has more than 700 signatories. All of this has happened in just a few years. We're heading the right direction, and I'm genuinely optimistic.\n\nMany thanks to Elisabeth Brier for the thoughtful conversation!",
@@ -19,7 +19,7 @@
     },
     {
       "id": "vp",
-      "name": "副总裁 (VP)",
+      "name": "Vice President (VP)",
       "style": "副总裁口吻：第一人称、带个人视角和自豪感（'I'm pleased to share'、'what excites me most'）；擅长把一个具体项目讲成一个有合作者、有机制、有量化收益的完整故事；大量使用图标项符号列举要点与数字（升水量、投资额、项目数）；强调'没有任何一家机构能独自解决，必须集体行动'的主题；结尾常带一句行动号召和延伸链接。观点落在水资源韧性、气候科技规模化、跨组织协作上。",
       "samples": [
         "Water resilience isn't something any one organization can solve alone. That's why I'm pleased to share our latest water replenishment project in Germany - and our first joint water initiative with Microsoft globally.\n\nTogether with NABU, Germany's oldest and largest environmental NGO, we're restoring natural wetland conditions across 40 hectares in the Vogelsberg region of Hesse, a critical water sourcing area for the City of Frankfurt. The project is expected to return more than 750 million liters of water to the local groundwater supply annually.\n\nThere's a growing recognition across the water sector - especially in Europe - that strengthening regional water resilience requires collective action: private enterprise, environmental organizations, landholders, and public authorities working together at a catchment level. This project is a meaningful example of that model in practice.",
@@ -28,22 +28,22 @@
       ]
     },
     {
-      "id": "sr_manager",
-      "name": "高级经理 (Sr. Manager)",
-      "style": "高级经理口吻：短促有力，善用一句话钩子开场把最抢眼的数字抛出来（'40 million people. 90% of America's winter vegetables. One river - and it's running dry.'）；点出'头条数字只是表象，真正的价值在于更深层的韧性/机制'这种有洞察的转折；段落短、节奏快，常用话题标签；强调集体行动与利益相关方协作；结尾一句号召加链接。观点犀利、提炼度高。",
-      "samples": [
-        "The 750 million litres is the headline. The real value is catchment resilience.\n\nRestoring wetland function in Germany's Vogelsberg region can help retain water in the landscape, support groundwater recharge and strengthen a critical water source for Frankfurt.\nThat is where water stewardship creates lasting value: not simply replacing volume, but improving the resilience of the catchment that communities, ecosystems and businesses depend on.\n\nAnd that requires collective action. Amazon, Microsoft, NABU e.V. and local stakeholders are showing what shared investment in catchment resilience can look like. #WaterStewardship #CatchmentResilience #WaterSecurity #NatureBasedSolutions",
-        "40 million people. 90% of America's winter vegetables. One river - and it's running dry.\nThe river can't wait. If your company has a stake in this basin, there's a seat at the table.\n\nToday Amazon co-launched the Colorado River Basin Collaborative, committing $20M and leading a coalition toward $100M for the most urgent water crisis in the U.S.\n\nAlongside ALDI USA, The Coca-Cola Company Foundation, Ecolab, EdgeConneX, GRUNDFOS, Vantage and Xylem, the coalition has committed $32M so far - coordinated by the Water Resilience Coalition with The Climate Pledge rallying more to join."
-      ]
-    },
-    {
       "id": "director",
-      "name": "总监 (Director)",
+      "name": "Director",
       "style": "总监口吻：命题/理念先行——开场先抛出一个观点、哲学命题或反直觉的行业洞察（'没有一家公司能独自应对气候危机'、'美妆业用几十年让我们相信每个季节都要买新品'），再用一个具体案例或项目去佐证这个命题；常用带个人态度的转折句（'What I love about this program is...'、'But what makes this powerful isn't just X—it's Y'）把叙事从'发生了什么'拉到'为什么重要'；擅长把一个项目讲成有框架、有意义的故事（有时用图标项列三支柱），但落点始终是理念而非单纯堆数字；语气笃定、有观点、善于点名合作伙伴。观点落在跨界协作、系统性变革、重新定义问题本身。",
       "samples": [
         "The core philosophy behind The Climate Pledge is that no company or industry can tackle the climate crisis alone. We're all in it together, and it takes a collaborative group of committed people and organizations to solve global challenges of this scale.\n\nThe Climate Pledge community has brought together more than 700 signatories committed to reaching net-zero carbon emissions by 2040.\n\nBut what makes this coalition powerful isn't just the commitment—it's the action. Signatories across industries are driving real, measurable progress. And, I want to highlight how six companies—Amazon, Orsted, HP, Lime, Brooks Running and To Do Green—are proving that cross-sector collaboration yields tangible environmental impact.\n\nRead about their work here: https://lnkd.in/eXGUUZVN",
         "Today, Amazon launched Built Together, a new framework committing more than $1 billion in additional funding over the next five years directly into communities where we have data centers across the U.S.\n\nWhat I love about this program is that it puts local leaders and residents in the driver's seat. It's structured around three core pillars that communities told us matter most:\n\nEducation & Workforce Pathways: opening the door to community college for more than 300,000 students by covering out-of-pocket costs after aid for local residents pursuing degrees in high-demand fields.\n\nEnergy Affordability & Water Solutions: energy-efficiency upgrades targeting 30,000+ homes and 300+ schools, saving families an estimated $700/year, plus 65+ water projects returning over 8 billion gallons annually.\n\nFlexible Funding for Local Priorities: dedicated annual funding for community foundations with residents deciding where it goes.\n\nNone of this happens alone. We're partnering with nonprofits and community organizations to drive measurable impact.",
         "The beauty industry has spent decades convincing us that every skin concern and season requires a new product.\n\nThe result?\n\nOverwhelmed consumers, cluttered bathroom counters, and millions of tons of packaging sent into the waste stream.\n\nTrue sustainability isn't just about redesigning packaging, but also about rethinking consumption itself.\n\nWhen Gntl joined The Climate Pledge, they brought a refreshing perspective to our community: the most sustainable product is often the one you don't create. By formulating single, high-quality products that do the job of many, Gntl addresses two huge modern challenges at once: decision fatigue and resource waste.\n\nGreat design eliminates the excess. When companies design for longevity and simplicity rather than constant consumption, the planet wins."
+      ]
+    },
+    {
+      "id": "sr_manager",
+      "name": "Senior Manager (Sr. Manager)",
+      "style": "高级经理口吻：短促有力，善用一句话钩子开场把最抢眼的数字抛出来（'40 million people. 90% of America's winter vegetables. One river - and it's running dry.'）；点出'头条数字只是表象，真正的价值在于更深层的韧性/机制'这种有洞察的转折；段落短、节奏快，常用话题标签；强调集体行动与利益相关方协作；结尾一句号召加链接。观点犀利、提炼度高。",
+      "samples": [
+        "The 750 million litres is the headline. The real value is catchment resilience.\n\nRestoring wetland function in Germany's Vogelsberg region can help retain water in the landscape, support groundwater recharge and strengthen a critical water source for Frankfurt.\nThat is where water stewardship creates lasting value: not simply replacing volume, but improving the resilience of the catchment that communities, ecosystems and businesses depend on.\n\nAnd that requires collective action. Amazon, Microsoft, NABU e.V. and local stakeholders are showing what shared investment in catchment resilience can look like. #WaterStewardship #CatchmentResilience #WaterSecurity #NatureBasedSolutions",
+        "40 million people. 90% of America's winter vegetables. One river - and it's running dry.\nThe river can't wait. If your company has a stake in this basin, there's a seat at the table.\n\nToday Amazon co-launched the Colorado River Basin Collaborative, committing $20M and leading a coalition toward $100M for the most urgent water crisis in the U.S.\n\nAlongside ALDI USA, The Coca-Cola Company Foundation, Ecolab, EdgeConneX, GRUNDFOS, Vantage and Xylem, the coalition has committed $32M so far - coordinated by the Water Resilience Coalition with The Climate Pledge rallying more to join."
       ]
     }
   ]
