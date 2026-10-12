@@ -23,8 +23,8 @@ Parameters:
     Description: 抓取时是否只处理水务子集（water_tier=true）。先跑通水务，再改 false 抓全部 15 家
   FetchSchedule:
     Type: String
-    Default: cron(0 16 ? * MON *)
-    Description: EventBridge 定时表达式（UTC）。默认每周一 UTC 16:00 ≈ 太平洋时间 8am，每周抓一次
+    Default: cron(0 18 ? * MON *)
+    Description: EventBridge 定时表达式（UTC）。默认每周一 UTC 18:00 ≈ 太平洋时间 10am，每周抓一次
 
 # ── 全局默认（所有函数共享）──────────────────────────────
 Globals:

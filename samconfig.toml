@@ -9,7 +9,7 @@ profile = "alter-dev"
 resolve_s3 = true
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = false
-parameter_overrides = "BedrockModelId=us.anthropic.claude-haiku-4-5-20251001-v1:0 WaterTierOnly=false"
+parameter_overrides = "BedrockModelId=us.anthropic.claude-haiku-4-5-20251001-v1:0 WaterTierOnly=false FetchSchedule=\"cron(0 18 ? * MON *)\""
 
 [default.build.parameters]
 cached = true
