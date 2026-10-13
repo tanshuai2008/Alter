@@ -39,6 +39,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 # feeds.json 由 fetcher 和网页共享，放在 functions/fetcher 下
 _FEEDS_PATH = os.path.join(_HERE, "..", "functions", "fetcher", "feeds.json")
 _PERSONAS_PATH = os.path.join(_HERE, "..", "functions", "fetcher", "personas.json")
+_MODELS_PATH = os.path.join(_HERE, "..", "functions", "fetcher", "models.json")
 
 # 用指定 profile 建 session（账号无关设计）
 _session = boto3.Session(profile_name=PROFILE, region_name=REGION)
@@ -93,6 +94,53 @@ def _slug(name: str) -> str:
     import time as _t
     s = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
     return s or f"persona_{int(_t.time())}"
+
+
+# ── models.json 读取 ────────────────────────────────────
+def load_models() -> list:
+    if not os.path.exists(_MODELS_PATH):
+        return []
+    with open(_MODELS_PATH, "r", encoding="utf-8") as f:
+        return json.load(f).get("models", [])
+
+
+# ── Decimal 清洗（DynamoDB 取回的是 Decimal，JSON 不能直接序列化）──
+def _clean(obj):
+    from decimal import Decimal
+    if isinstance(obj, list):
+        return [_clean(x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _clean(v) for k, v in obj.items()}
+    if isinstance(obj, Decimal):
+        f = float(obj)
+        return int(f) if f == int(f) else f
+    return obj
+
+
+def usage_summary() -> dict:
+    """汇总所有已生成草稿的累计 token / 成本，以及按模型拆分。"""
+    total = {"drafts": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}
+    by_model = {}
+    for it in list_drafts(status="PENDING_REVIEW"):
+        if not it.get("model_id"):
+            continue
+        total["drafts"] += 1
+        it_in = int(it.get("input_tokens", 0) or 0)
+        it_out = int(it.get("output_tokens", 0) or 0)
+        it_cost = float(it.get("cost_usd", 0) or 0)
+        total["input_tokens"] += it_in
+        total["output_tokens"] += it_out
+        total["cost_usd"] += it_cost
+        m = it["model_id"]
+        bm = by_model.setdefault(m, {"drafts": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0})
+        bm["drafts"] += 1
+        bm["input_tokens"] += it_in
+        bm["output_tokens"] += it_out
+        bm["cost_usd"] += it_cost
+    total["cost_usd"] = round(total["cost_usd"], 6)
+    for m in by_model:
+        by_model[m]["cost_usd"] = round(by_model[m]["cost_usd"], 6)
+    return {"total": total, "by_model": by_model}
 
 
 # ── DynamoDB 草稿读写 ───────────────────────────────────
@@ -196,13 +244,15 @@ def trigger_fetch(topics=None, feeds=None, generate=False, persona=None, word_li
     return result
 
 
-def trigger_generate(draft_id: str, persona=None, word_limit=None) -> dict:
-    """对一条已抓取(NEW)的帖子，用指定口吻+长度生成评论。"""
+def trigger_generate(draft_id: str, persona=None, word_limit=None, model_id=None) -> dict:
+    """对一条已抓取(NEW)的帖子，用指定口吻+长度+模型生成评论。"""
     payload = {"action": "generate", "draft_id": draft_id}
     if persona:
         payload["persona"] = persona
     if word_limit:
         payload["word_limit"] = int(word_limit)
+    if model_id:
+        payload["model_id"] = model_id
     return _invoke_fetcher(payload)
 
 
@@ -248,13 +298,17 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/drafts":
                 status = (qs.get("status") or [None])[0]
                 topics = qs.get("topics")  # list 或 None
-                self._send_json(list_drafts(status=status, topics=topics))
+                self._send_json(_clean(list_drafts(status=status, topics=topics)))
             elif path == "/api/feeds":
                 self._send_json(load_feeds_file().get("feeds", []))
             elif path == "/api/topics":
                 self._send_json(all_topics())
             elif path == "/api/personas":
                 self._send_json(load_personas_file().get("personas", []))
+            elif path == "/api/models":
+                self._send_json(load_models())
+            elif path == "/api/stats":
+                self._send_json(usage_summary())
             else:
                 self._send_json({"error": "not found"}, 404)
         except Exception as e:  # noqa: BLE001
@@ -292,7 +346,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json(trigger_generate(
                     body["draft_id"],
                     persona=body.get("persona") or None,
-                    word_limit=body.get("word_limit") or None))
+                    word_limit=body.get("word_limit") or None,
+                    model_id=body.get("model_id") or None))
             elif path == "/api/personas":
                 # 新增或编辑：有 id 则覆盖同 id，否则按 name 生成 id 新增
                 data = load_personas_file()

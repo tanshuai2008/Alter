@@ -66,6 +66,7 @@
   <button id="btnSources">📋 Select Sources</button>
   <button class="primary" id="btnFetch">⟳ Fetch News</button>
   <div class="spacer"></div>
+  <span id="costBadge" title="Total tokens & estimated cost of all generated drafts" style="font-size:12px;color:var(--muted);margin-right:4px;">💰 —</span>
   <button id="btnPersona">Manage Voices</button>
   <button id="btnManage">Manage Sources</button>
   <button id="btnRefresh">Refresh</button>
@@ -137,6 +138,7 @@ const LENGTHS = [ {v:50,label:"Short (~50 words)"}, {v:100,label:"Medium (~100 w
 let drafts = [], selected = null;
 let currentView = "NEW";           // NEW = to generate / PENDING_REVIEW = generated & pending
 let personas = [];                 // cached voices
+let models = [];                   // cached LLM models (from AWS list)
 
 const api = {
   async get(p){ const r = await fetch(p); return r.json(); },
@@ -145,6 +147,30 @@ const api = {
 };
 function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),1800); }
 function fmtTime(ts){ return ts ? new Date(ts*1000).toLocaleString("en-US") : "Never"; }
+function fmtUsd(x){ const n=Number(x||0); return n < 0.01 ? ("$"+n.toFixed(5)) : ("$"+n.toFixed(4)); }
+
+async function loadModels(){
+  models = await api.get("/api/models");
+  return models;
+}
+// build the <option> list for a model picker; the model marked default is pre-selected
+function modelOptions(){
+  return models.map(m=>`<option value="${esc(m.id)}"${m.default?" selected":""}>${esc(m.name)}</option>`).join("");
+}
+async function refreshCost(){
+  try{
+    const s = await api.get("/api/stats");
+    const t = s.total||{};
+    const badge = document.getElementById("costBadge");
+    badge.textContent = `💰 ${fmtUsd(t.cost_usd)} · ${t.drafts||0} gen · ${(t.input_tokens||0)+(t.output_tokens||0)} tok`;
+    // tooltip: per-model breakdown
+    const lines = Object.entries(s.by_model||{}).map(([mid,v])=>{
+      const nm = (models.find(m=>m.id===mid)||{}).name || mid;
+      return `${nm}: ${v.drafts} gen, ${fmtUsd(v.cost_usd)}`;
+    });
+    badge.title = lines.length ? ("Estimated cost by model:\n"+lines.join("\n")) : "No generations yet";
+  }catch(e){ /* ignore */ }
+}
 
 async function loadDrafts(){
   let url = "/api/drafts?status=" + currentView;
@@ -189,13 +215,14 @@ function renderDetail(){
     ${d.url ? `<a href="${esc(d.url)}" target="_blank">↗ Open original</a>` : ""}`;
 
   if(currentView==="NEW" || !d.draft){
-    // not generated yet: show summary + voice/length pickers + generate button
+    // not generated yet: show summary + model/voice/length pickers + generate button
     const personaOpts = personas.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
     const lenOpts = LENGTHS.map(l=>`<option value="${l.v}"${l.v===100?" selected":""}>${l.label}</option>`).join("");
     el.innerHTML = head + `
       ${d.summary ? `<div class="card"><h3>Original summary</h3><div class="draft">${esc(d.summary)}</div></div>` : ""}
       <div class="genbox">
         <div class="genrow">
+          <div><label>Model</label><select id="genModel">${modelOptions()}</select></div>
           <div><label>Voice</label><select id="genPersona">${personaOpts}</select></div>
           <div><label>Comment length</label><select id="genLen">${lenOpts}</select></div>
           <button class="good" id="btnGen">✨ Generate comment</button>
@@ -205,15 +232,22 @@ function renderDetail(){
     document.getElementById("btnGen").onclick = ()=> generateComment(d.id);
     document.getElementById("btnSkipItem").onclick = ()=> setStatus(d.id,"IGNORED");
   } else {
-    // generated: show draft + copy / mark
+    // generated: show draft + copy / mark + per-draft usage
+    const usage = (d.model_id || d.cost_usd!==undefined) ? `
+        <div style="margin-top:8px;font-size:11px;color:var(--muted);">
+          ${d.model_id ? 'Model: '+esc((models.find(m=>m.id===d.model_id)||{}).name || d.model_id) : ''}
+          ${d.input_tokens!==undefined ? ' · '+esc((Number(d.input_tokens)+Number(d.output_tokens))||0)+' tokens' : ''}
+          ${d.cost_usd!==undefined ? ' · ~'+fmtUsd(d.cost_usd) : ''}
+        </div>` : '';
     el.innerHTML = head + `
       <div class="card">
         <h3>AI draft comment (English + Chinese)${d.persona ? ' · Voice: '+esc(d.persona) : ''}${d.word_limit ? ' · ~'+esc(d.word_limit)+' words' : ''}</h3>
         <div class="draft" id="draftText">${esc(d.draft||"")}</div>
+        ${usage}
       </div>
       <div class="actions">
         <button class="good" id="btnCopy">📋 Copy draft</button>
-        <button id="btnRegen">↻ Regenerate (change voice/length)</button>
+        <button id="btnRegen">↻ Regenerate (change model/voice/length)</button>
         <button id="btnPosted">✓ Mark as posted</button>
         <button id="btnIgnore">✕ Ignore</button>
       </div>`;
@@ -232,6 +266,7 @@ function regenPanel(d){
   el.insertAdjacentHTML("beforeend", `
     <div class="genbox" id="regenBox">
       <div class="genrow">
+        <div><label>Change model</label><select id="genModel">${modelOptions()}</select></div>
         <div><label>Change voice</label><select id="genPersona">${personaOpts}</select></div>
         <div><label>Change length</label><select id="genLen">${lenOpts}</select></div>
         <button class="good" id="btnGen2">✨ Regenerate</button>
@@ -243,17 +278,19 @@ function regenPanel(d){
 async function generateComment(id){
   const persona = document.getElementById("genPersona").value;
   const word_limit = document.getElementById("genLen").value;
+  const modelEl = document.getElementById("genModel");
+  const model_id = modelEl ? modelEl.value : null;
   const btn = document.getElementById("btnGen") || document.getElementById("btnGen2");
   if(btn){ btn.disabled = true; btn.textContent = "Generating… (a few seconds)"; }
-  const r = await api.post("/api/generate", {draft_id:id, persona, word_limit});
+  const r = await api.post("/api/generate", {draft_id:id, persona, word_limit, model_id});
   if(r.error){ toast("Generation error: "+r.error); if(btn){btn.disabled=false; btn.textContent="✨ Generate comment";} return; }
-  toast("Comment generated");
+  toast("Comment generated · ~"+fmtUsd(r.cost_usd));
   // after generation this item moves NEW -> PENDING_REVIEW: switch view and reselect it
   currentView = "PENDING_REVIEW";
   document.querySelectorAll(".tab").forEach(b=> b.classList.toggle("primary", b.dataset.view==="PENDING_REVIEW"));
   await loadDrafts();
   selected = drafts.find(x=>x.id===id) || null;
-  renderList(); renderDetail();
+  renderList(); renderDetail(); refreshCost();
 }
 
 async function setStatus(id,status){
@@ -409,8 +446,8 @@ document.getElementById("srcAll").onclick = ()=> allFeeds.forEach((f,i)=> docume
 document.getElementById("srcNone").onclick = ()=> allFeeds.forEach((f,i)=> document.getElementById("src_"+i).checked = false);
 document.querySelectorAll(".tab").forEach(b=> b.onclick = ()=> switchView(b.dataset.view));
 
-// initial load: voices first (detail voice dropdown needs them), then the list
-(async ()=>{ await loadPersonas(); loadDrafts(); })();
+// initial load: voices + models first (detail pickers need them), then the list + cost
+(async ()=>{ await Promise.all([loadPersonas(), loadModels()]); loadDrafts(); refreshCost(); })();
 </script>
 </body>
 </html>

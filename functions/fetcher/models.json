@@ -1,0 +1,26 @@
+{
+  "_comment": "可选的 Bedrock 模型清单。网页'Model'下拉读它；成本按 price_in/price_out（每百万 token 美元）估算。价格为 Anthropic 公开参考价，可能变动，仅供粗估。default=true 的是定时任务用的默认模型。",
+  "models": [
+    {
+      "id": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+      "name": "Claude Haiku 4.5 (fast & cheap)",
+      "price_in": 1.0,
+      "price_out": 5.0,
+      "default": true
+    },
+    {
+      "id": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+      "name": "Claude Sonnet 4.5 (balanced)",
+      "price_in": 3.0,
+      "price_out": 15.0,
+      "default": false
+    },
+    {
+      "id": "us.anthropic.claude-opus-4-5-20251101-v1:0",
+      "name": "Claude Opus 4.5 (highest quality)",
+      "price_in": 5.0,
+      "price_out": 25.0,
+      "default": false
+    }
+  ]
+}

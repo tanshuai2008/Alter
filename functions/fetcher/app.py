@@ -20,9 +20,15 @@ import time
 import uuid
 import hashlib
 import calendar
+from decimal import Decimal
 
 import boto3
 import feedparser
+
+
+def _dec(x):
+    """float -> Decimal（DynamoDB 不接受原生 float）。"""
+    return Decimal(str(x))
 
 # ── 环境变量（SAM 注入）────────────────────────────────
 TABLE_NAME = os.environ["TABLE_NAME"]
@@ -46,6 +52,29 @@ _table = _dynamodb.Table(TABLE_NAME)
 _seen = _dynamodb.Table(SEEN_TABLE_NAME)
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def load_models() -> list:
+    """读取可用模型清单（含单价）。文件缺失时兜底返回默认模型。"""
+    path = os.path.join(_HERE, "models.json")
+    if not os.path.exists(path):
+        return [{"id": MODEL_ID, "name": "default", "price_in": 0, "price_out": 0, "default": True}]
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f).get("models", [])
+
+
+def _model_price(model_id: str):
+    """返回某模型的 (price_in, price_out)，单位：美元/百万 token。未知模型返回 (0, 0)。"""
+    for m in load_models():
+        if m.get("id") == model_id:
+            return float(m.get("price_in", 0)), float(m.get("price_out", 0))
+    return 0.0, 0.0
+
+
+def compute_cost(model_id: str, in_tokens: int, out_tokens: int) -> float:
+    """按单价估算这次调用的美元成本（price 单位是每百万 token）。"""
+    p_in, p_out = _model_price(model_id)
+    return round(in_tokens / 1_000_000 * p_in + out_tokens / 1_000_000 * p_out, 6)
 
 
 def load_feeds(topics=None, names=None) -> list:
@@ -178,38 +207,59 @@ def build_prompt(post: dict, persona: dict = None, word_limit: int = None) -> st
     )
 
 
-def generate_draft(post: dict, persona: dict = None, word_limit: int = None) -> str:
+def generate_draft(post: dict, persona: dict = None, word_limit: int = None,
+                   model_id: str = None) -> dict:
+    """生成草稿。返回 dict：{text, model_id, input_tokens, output_tokens, cost}。
+    model_id 为空时用默认 MODEL_ID。"""
     # 输出 token 上限随词数档位放宽：长档需要更多 token 才不被截断
     limit = word_limit or COMMENT_MAX_WORDS
     max_tokens = max(600, int(limit) * 6)
+    use_model = model_id or MODEL_ID
     body = {
         "anthropic_version": "bedrock-2023-05-31",
         "max_tokens": max_tokens,
         "messages": [{"role": "user", "content": build_prompt(post, persona, word_limit)}],
     }
-    resp = _bedrock.invoke_model(modelId=MODEL_ID, body=json.dumps(body))
+    resp = _bedrock.invoke_model(modelId=use_model, body=json.dumps(body))
     payload = json.loads(resp["body"].read())
-    return payload["content"][0]["text"].strip()
+    usage = payload.get("usage", {}) or {}
+    in_tok = int(usage.get("input_tokens", 0))
+    out_tok = int(usage.get("output_tokens", 0))
+    return {
+        "text": payload["content"][0]["text"].strip(),
+        "model_id": use_model,
+        "input_tokens": in_tok,
+        "output_tokens": out_tok,
+        "cost": compute_cost(use_model, in_tok, out_tok),
+    }
 
 
 def save_draft(source_name: str, entry, draft: str, persona_name: str = "",
-               status: str = "PENDING_REVIEW", topics=None) -> str:
-    """存一条草稿。draft 为空串时表示"只抓未生成"（状态 NEW）。返回新 id。"""
+               status: str = "PENDING_REVIEW", topics=None, gen: dict = None) -> str:
+    """存一条草稿。draft 为空串时表示"只抓未生成"（状态 NEW）。
+    gen 非空时附带本次生成的模型与 token/成本。返回新 id。"""
     item_id = str(uuid.uuid4())
-    _table.put_item(
-        Item={
-            "id": item_id,
-            "created_at": int(time.time()),
-            "author": source_name,
-            "title": getattr(entry, "title", ""),
-            "url": getattr(entry, "link", ""),
-            "summary": extract_summary(entry, 1000),
-            "topics": topics or [],
-            "draft": draft,
-            "persona": persona_name,  # 本条草稿用的口吻（空=通用）
-            "status": status,  # NEW=只抓未生成 / PENDING_REVIEW=已生成待审
-        }
-    )
+    item = {
+        "id": item_id,
+        "created_at": int(time.time()),
+        "author": source_name,
+        "title": getattr(entry, "title", ""),
+        "url": getattr(entry, "link", ""),
+        "summary": extract_summary(entry, 1000),
+        "topics": topics or [],
+        "draft": draft,
+        "persona": persona_name,  # 本条草稿用的口吻（空=通用）
+        "status": status,  # NEW=只抓未生成 / PENDING_REVIEW=已生成待审
+    }
+    if gen:
+        item.update({
+            "model_id": gen.get("model_id", ""),
+            "input_tokens": gen.get("input_tokens", 0),
+            "output_tokens": gen.get("output_tokens", 0),
+            "cost_usd": _dec(gen.get("cost", 0)),
+            "generated_at": int(time.time()),
+        })
+    _table.put_item(Item=item)
     return item_id
 
 
@@ -226,13 +276,14 @@ def _entry_from_item(item: dict):
 
 
 def handle_generate(event) -> dict:
-    """单篇生成：读某条 NEW 草稿，用指定口吻+长度生成评论，原地更新为 PENDING_REVIEW。"""
+    """单篇生成：读某条 NEW 草稿，用指定口吻+长度+模型生成评论，原地更新为 PENDING_REVIEW。"""
     draft_id = event.get("draft_id")
     if not draft_id:
         return {"error": "missing draft_id"}
     persona = load_persona(event.get("persona"))
     persona_name = persona.get("name", "") if persona else ""
     word_limit = int(event.get("word_limit") or COMMENT_MAX_WORDS)
+    model_id = event.get("model_id") or MODEL_ID
 
     resp = _table.get_item(Key={"id": draft_id})
     item = resp.get("Item")
@@ -245,18 +296,25 @@ def handle_generate(event) -> dict:
         "summary": (item.get("summary") or "")[:1000],
         "url": item.get("url", ""),
     }
-    draft = generate_draft(post, persona, word_limit)
+    gen = generate_draft(post, persona, word_limit, model_id)
     _table.update_item(
         Key={"id": draft_id},
-        UpdateExpression="SET #d = :d, persona = :p, #s = :s, word_limit = :w, generated_at = :g",
+        UpdateExpression=(
+            "SET #d = :d, persona = :p, #s = :s, word_limit = :w, generated_at = :g, "
+            "model_id = :m, input_tokens = :it, output_tokens = :ot, cost_usd = :c"
+        ),
         ExpressionAttributeNames={"#d": "draft", "#s": "status"},
         ExpressionAttributeValues={
-            ":d": draft, ":p": persona_name, ":s": "PENDING_REVIEW",
+            ":d": gen["text"], ":p": persona_name, ":s": "PENDING_REVIEW",
             ":w": word_limit, ":g": int(time.time()),
+            ":m": gen["model_id"], ":it": gen["input_tokens"],
+            ":ot": gen["output_tokens"], ":c": _dec(gen["cost"]),
         },
     )
     return {"ok": True, "id": draft_id, "persona": persona_name or "通用",
-            "word_limit": word_limit, "draft": draft}
+            "word_limit": word_limit, "draft": gen["text"],
+            "model_id": gen["model_id"], "input_tokens": gen["input_tokens"],
+            "output_tokens": gen["output_tokens"], "cost_usd": gen["cost"]}
 
 
 def lambda_handler(event, context):
@@ -278,10 +336,12 @@ def lambda_handler(event, context):
     persona = load_persona(event.get("persona")) if generate_now else None
     persona_name = persona.get("name", "") if persona else ""
     word_limit = int(event.get("word_limit") or COMMENT_MAX_WORDS)
+    model_id = event.get("model_id") or MODEL_ID
 
     feeds = load_feeds(topics=topics, names=names)
     stats = {"feeds": len(feeds), "new_items": 0, "new_drafts": 0, "skipped": 0,
-             "mode": "generate" if generate_now else "fetch_only", "errors": []}
+             "mode": "generate" if generate_now else "fetch_only",
+             "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0, "errors": []}
 
     for feed in feeds:
         name, url = feed["name"], feed["url"]
@@ -313,10 +373,13 @@ def lambda_handler(event, context):
                         "summary": extract_summary(entry, 1000),
                         "url": getattr(entry, "link", ""),
                     }
-                    draft = generate_draft(post, persona, word_limit)
-                    save_draft(name, entry, draft, persona_name,
-                               status="PENDING_REVIEW", topics=feed_topics)
+                    gen = generate_draft(post, persona, word_limit, model_id)
+                    save_draft(name, entry, gen["text"], persona_name,
+                               status="PENDING_REVIEW", topics=feed_topics, gen=gen)
                     stats["new_drafts"] += 1
+                    stats["input_tokens"] += gen["input_tokens"]
+                    stats["output_tokens"] += gen["output_tokens"]
+                    stats["cost_usd"] = round(stats["cost_usd"] + gen["cost"], 6)
                 else:
                     # 只抓不生成：存一条空草稿等用户逐篇生成
                     save_draft(name, entry, "", "", status="NEW", topics=feed_topics)
