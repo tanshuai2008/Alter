@@ -1,19 +1,19 @@
-"""
-Alter —— 本地待审网页后端（路线 A）
+﻿"""
+Alter â€”â€” æœ¬åœ°å¾…å®¡ç½‘é¡µåŽç«¯ï¼ˆè·¯çº¿ Aï¼‰
 
-一个零额外依赖的本地服务器（Python 标准库 + boto3），负责：
-  1. 托管网页界面（index.html）
-  2. 提供 JSON API：
-     - GET  /api/drafts            列出草稿（可按 ?status= / ?topics= 筛选）
-     - POST /api/drafts/status     更新一条草稿的状态（已发/忽略/待审）
-     - GET  /api/feeds             列出关注对象（含标签）
-     - POST /api/feeds             新增一个关注对象
-     - DELETE /api/feeds           删除一个关注对象
-     - GET  /api/topics            列出所有已用过的标签
-     - POST /api/fetch             手动触发抓取（可选 ?topics= 只抓某些标签）
+ä¸€ä¸ªé›¶é¢å¤–ä¾èµ–çš„æœ¬åœ°æœåŠ¡å™¨ï¼ˆPython æ ‡å‡†åº“ + boto3ï¼‰ï¼Œè´Ÿè´£ï¼š
+  1. æ‰˜ç®¡ç½‘é¡µç•Œé¢ï¼ˆindex.htmlï¼‰
+  2. æä¾› JSON APIï¼š
+     - GET  /api/drafts            åˆ—å‡ºè‰ç¨¿ï¼ˆå¯æŒ‰ ?status= / ?topics= ç­›é€‰ï¼‰
+     - POST /api/drafts/status     æ›´æ–°ä¸€æ¡è‰ç¨¿çš„çŠ¶æ€ï¼ˆå·²å‘/å¿½ç•¥/å¾…å®¡ï¼‰
+     - GET  /api/feeds             åˆ—å‡ºå…³æ³¨å¯¹è±¡ï¼ˆå«æ ‡ç­¾ï¼‰
+     - POST /api/feeds             æ–°å¢žä¸€ä¸ªå…³æ³¨å¯¹è±¡
+     - DELETE /api/feeds           åˆ é™¤ä¸€ä¸ªå…³æ³¨å¯¹è±¡
+     - GET  /api/topics            åˆ—å‡ºæ‰€æœ‰å·²ç”¨è¿‡çš„æ ‡ç­¾
+     - POST /api/fetch             æ‰‹åŠ¨è§¦å‘æŠ“å–ï¼ˆå¯é€‰ ?topics= åªæŠ“æŸäº›æ ‡ç­¾ï¼‰
 
-安全：只绑定 127.0.0.1（本机），不对公网暴露。关电脑即停。
-用法：在 Alter 目录开 PowerShell，运行 run.ps1，浏览器自动开 http://127.0.0.1:8765
+å®‰å…¨ï¼šåªç»‘å®š 127.0.0.1ï¼ˆæœ¬æœºï¼‰ï¼Œä¸å¯¹å…¬ç½‘æš´éœ²ã€‚å…³ç”µè„‘å³åœã€‚
+ç”¨æ³•ï¼šåœ¨ Alter ç›®å½•å¼€ PowerShellï¼Œè¿è¡Œ run.ps1ï¼Œæµè§ˆå™¨è‡ªåŠ¨å¼€ http://127.0.0.1:8765
 """
 
 import json
@@ -23,12 +23,17 @@ import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
+import sys
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8')
 
 import boto3
 from boto3.dynamodb.conditions import Attr
 from botocore.config import Config
 
-# ── 配置（与项目其余部分一致）────────────────────────────
+# â”€â”€ é…ç½®ï¼ˆä¸Žé¡¹ç›®å…¶ä½™éƒ¨åˆ†ä¸€è‡´ï¼‰â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 REGION = os.environ.get("AWS_REGION", "us-east-1")
 PROFILE = os.environ.get("ALTER_PROFILE", "alter-dev")
 DRAFTS_TABLE = os.environ.get("TABLE_NAME", "alter-drafts")
@@ -36,17 +41,17 @@ FETCHER_FUNCTION = os.environ.get("FETCHER_FUNCTION", "alter-fetcher")
 PORT = int(os.environ.get("ALTER_WEB_PORT", "8765"))
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-# feeds.json 由 fetcher 和网页共享，放在 functions/fetcher 下
+# feeds.json ç”± fetcher å’Œç½‘é¡µå…±äº«ï¼Œæ”¾åœ¨ functions/fetcher ä¸‹
 _FEEDS_PATH = os.path.join(_HERE, "..", "functions", "fetcher", "feeds.json")
 _PERSONAS_PATH = os.path.join(_HERE, "..", "functions", "fetcher", "personas.json")
 _MODELS_PATH = os.path.join(_HERE, "..", "functions", "fetcher", "models.json")
 
-# 用指定 profile 建 session（账号无关设计）
+# ç”¨æŒ‡å®š profile å»º sessionï¼ˆè´¦å·æ— å…³è®¾è®¡ï¼‰
 _session = boto3.Session(profile_name=PROFILE, region_name=REGION)
 _dynamodb = _session.resource("dynamodb")
 _drafts = _dynamodb.Table(DRAFTS_TABLE)
-# Lambda 同步生成评论可能跑 1~2 分钟（长档双语），boto3 默认读超时只有 60s
-# 会导致假性卡住 + 后台自动重试。放宽到 300s（与 Lambda 自身上限对齐）、关闭重试。
+# Lambda åŒæ­¥ç”Ÿæˆè¯„è®ºå¯èƒ½è·‘ 1~2 åˆ†é’Ÿï¼ˆé•¿æ¡£åŒè¯­ï¼‰ï¼Œboto3 é»˜è®¤è¯»è¶…æ—¶åªæœ‰ 60s
+# ä¼šå¯¼è‡´å‡æ€§å¡ä½ + åŽå°è‡ªåŠ¨é‡è¯•ã€‚æ”¾å®½åˆ° 300sï¼ˆä¸Ž Lambda è‡ªèº«ä¸Šé™å¯¹é½ï¼‰ã€å…³é—­é‡è¯•ã€‚
 _lambda_cfg = Config(
     read_timeout=300,
     connect_timeout=15,
@@ -55,7 +60,7 @@ _lambda_cfg = Config(
 _lambda = _session.client("lambda", config=_lambda_cfg)
 
 
-# ── feeds.json 读写 ─────────────────────────────────────
+# â”€â”€ feeds.json è¯»å†™ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def load_feeds_file() -> dict:
     with open(_FEEDS_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
@@ -75,7 +80,7 @@ def all_topics() -> list:
     return sorted(topics)
 
 
-# ── personas.json 读写 ──────────────────────────────────
+# â”€â”€ personas.json è¯»å†™ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def load_personas_file() -> dict:
     if not os.path.exists(_PERSONAS_PATH):
         return {"personas": []}
@@ -89,14 +94,14 @@ def save_personas_file(data: dict):
 
 
 def _slug(name: str) -> str:
-    """从名字生成一个 id（无合适字符时用时间戳兜底）。"""
+    """ä»Žåå­—ç”Ÿæˆä¸€ä¸ª idï¼ˆæ— åˆé€‚å­—ç¬¦æ—¶ç”¨æ—¶é—´æˆ³å…œåº•ï¼‰ã€‚"""
     import re
     import time as _t
     s = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
     return s or f"persona_{int(_t.time())}"
 
 
-# ── models.json 读取 ────────────────────────────────────
+# â”€â”€ models.json è¯»å– â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def load_models() -> list:
     if not os.path.exists(_MODELS_PATH):
         return []
@@ -104,7 +109,7 @@ def load_models() -> list:
         return json.load(f).get("models", [])
 
 
-# ── Decimal 清洗（DynamoDB 取回的是 Decimal，JSON 不能直接序列化）──
+# â”€â”€ Decimal æ¸…æ´—ï¼ˆDynamoDB å–å›žçš„æ˜¯ Decimalï¼ŒJSON ä¸èƒ½ç›´æŽ¥åºåˆ—åŒ–ï¼‰â”€â”€
 def _clean(obj):
     from decimal import Decimal
     if isinstance(obj, list):
@@ -118,7 +123,7 @@ def _clean(obj):
 
 
 def usage_summary() -> dict:
-    """汇总所有已生成草稿的累计 token / 成本，以及按模型拆分。"""
+    """æ±‡æ€»æ‰€æœ‰å·²ç”Ÿæˆè‰ç¨¿çš„ç´¯è®¡ token / æˆæœ¬ï¼Œä»¥åŠæŒ‰æ¨¡åž‹æ‹†åˆ†ã€‚"""
     total = {"drafts": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}
     by_model = {}
     for it in list_drafts(status="PENDING_REVIEW"):
@@ -143,9 +148,9 @@ def usage_summary() -> dict:
     return {"total": total, "by_model": by_model}
 
 
-# ── DynamoDB 草稿读写 ───────────────────────────────────
+# â”€â”€ DynamoDB è‰ç¨¿è¯»å†™ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def list_drafts(status=None, topics=None) -> list:
-    """全表扫描草稿（POC 数据量小，scan 足够）。可按状态和标签筛选。"""
+    """å…¨è¡¨æ‰«æè‰ç¨¿ï¼ˆPOC æ•°æ®é‡å°ï¼Œscan è¶³å¤Ÿï¼‰ã€‚å¯æŒ‰çŠ¶æ€å’Œæ ‡ç­¾ç­›é€‰ã€‚"""
     scan_kwargs = {}
     if status:
         scan_kwargs["FilterExpression"] = Attr("status").eq(status)
@@ -157,7 +162,7 @@ def list_drafts(status=None, topics=None) -> list:
         resp = _drafts.scan(**scan_kwargs)
         items.extend(resp.get("Items", []))
 
-    # 若按标签筛选：用 feeds.json 把 author -> topics 映射出来，再过滤
+    # è‹¥æŒ‰æ ‡ç­¾ç­›é€‰ï¼šç”¨ feeds.json æŠŠ author -> topics æ˜ å°„å‡ºæ¥ï¼Œå†è¿‡æ»¤
     if topics:
         topic_set = set(topics)
         author_topics = {}
@@ -168,7 +173,7 @@ def list_drafts(status=None, topics=None) -> list:
             if author_topics.get(it.get("author", ""), set()) & topic_set
         ]
 
-    # Decimal -> int，按时间倒序
+    # Decimal -> intï¼ŒæŒ‰æ—¶é—´å€’åº
     for it in items:
         if "created_at" in it:
             it["created_at"] = int(it["created_at"])
@@ -185,7 +190,7 @@ def update_status(draft_id: str, status: str):
     )
 
 
-# ── 手动触发抓取 / 单篇生成 ──────────────────────────────
+# â”€â”€ æ‰‹åŠ¨è§¦å‘æŠ“å– / å•ç¯‡ç”Ÿæˆ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def _invoke_fetcher(payload: dict) -> dict:
     resp = _lambda.invoke(
         FunctionName=FETCHER_FUNCTION,
@@ -200,9 +205,9 @@ def _invoke_fetcher(payload: dict) -> dict:
 
 
 def _mark_scanned(topics=None, feeds=None):
-    """抓取成功后，给本地 feeds.json 里实际被抓的源写上 last_scanned 时间戳。
-    feeds=按名字点选；topics=按标签；两者都空=全部源。
-    注意：这是"本地上次抓取时间"，云端每周一定时任务不经过这里，不会更新它。"""
+    """æŠ“å–æˆåŠŸåŽï¼Œç»™æœ¬åœ° feeds.json é‡Œå®žé™…è¢«æŠ“çš„æºå†™ä¸Š last_scanned æ—¶é—´æˆ³ã€‚
+    feeds=æŒ‰åå­—ç‚¹é€‰ï¼›topics=æŒ‰æ ‡ç­¾ï¼›ä¸¤è€…éƒ½ç©º=å…¨éƒ¨æºã€‚
+    æ³¨æ„ï¼šè¿™æ˜¯"æœ¬åœ°ä¸Šæ¬¡æŠ“å–æ—¶é—´"ï¼Œäº‘ç«¯æ¯å‘¨ä¸€å®šæ—¶ä»»åŠ¡ä¸ç»è¿‡è¿™é‡Œï¼Œä¸ä¼šæ›´æ–°å®ƒã€‚"""
     now = int(time.time())
     data = load_feeds_file()
     name_set = set(feeds) if feeds else None
@@ -214,15 +219,15 @@ def _mark_scanned(topics=None, feeds=None):
         elif topic_set is not None:
             hit = bool(set(feed.get("topics", [])) & topic_set)
         else:
-            hit = True  # 全部源
+            hit = True  # å…¨éƒ¨æº
         if hit:
             feed["last_scanned"] = now
     save_feeds_file(data)
 
 
 def trigger_fetch(topics=None, feeds=None, generate=False, persona=None, word_limit=None) -> dict:
-    """同步调用 fetcher Lambda 抓取。默认只抓不生成（A 方案）。
-    feeds=点选的信息源名字列表；topics=按标签；两者都空=全部/定时默认。"""
+    """åŒæ­¥è°ƒç”¨ fetcher Lambda æŠ“å–ã€‚é»˜è®¤åªæŠ“ä¸ç”Ÿæˆï¼ˆA æ–¹æ¡ˆï¼‰ã€‚
+    feeds=ç‚¹é€‰çš„ä¿¡æ¯æºåå­—åˆ—è¡¨ï¼›topics=æŒ‰æ ‡ç­¾ï¼›ä¸¤è€…éƒ½ç©º=å…¨éƒ¨/å®šæ—¶é»˜è®¤ã€‚"""
     payload = {}
     if feeds:
         payload["feeds"] = feeds
@@ -235,17 +240,17 @@ def trigger_fetch(topics=None, feeds=None, generate=False, persona=None, word_li
         if word_limit:
             payload["word_limit"] = int(word_limit)
     result = _invoke_fetcher(payload)
-    # 抓取没报错才记录时间（Lambda 返回里没有 error 字段即视为成功）
+    # æŠ“å–æ²¡æŠ¥é”™æ‰è®°å½•æ—¶é—´ï¼ˆLambda è¿”å›žé‡Œæ²¡æœ‰ error å­—æ®µå³è§†ä¸ºæˆåŠŸï¼‰
     if not (isinstance(result, dict) and result.get("error")):
         try:
             _mark_scanned(topics=topics, feeds=feeds)
-        except Exception:  # noqa: BLE001 —— 记录时间失败不影响抓取结果
+        except Exception:  # noqa: BLE001 â€”â€” è®°å½•æ—¶é—´å¤±è´¥ä¸å½±å“æŠ“å–ç»“æžœ
             pass
     return result
 
 
 def trigger_generate(draft_id: str, persona=None, word_limit=None, model_id=None) -> dict:
-    """对一条已抓取(NEW)的帖子，用指定口吻+长度+模型生成评论。"""
+    """å¯¹ä¸€æ¡å·²æŠ“å–(NEW)çš„å¸–å­ï¼Œç”¨æŒ‡å®šå£å»+é•¿åº¦+æ¨¡åž‹ç”Ÿæˆè¯„è®ºã€‚"""
     payload = {"action": "generate", "draft_id": draft_id}
     if persona:
         payload["persona"] = persona
@@ -256,7 +261,7 @@ def trigger_generate(draft_id: str, persona=None, word_limit=None, model_id=None
     return _invoke_fetcher(payload)
 
 
-# ── HTTP 处理 ───────────────────────────────────────────
+# â”€â”€ HTTP å¤„ç† â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class Handler(BaseHTTPRequestHandler):
     def _send_json(self, obj, code=200):
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
@@ -285,7 +290,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:  # noqa: BLE001
             return {}
 
-    def log_message(self, *args):  # 静音默认日志
+    def log_message(self, *args):  # é™éŸ³é»˜è®¤æ—¥å¿—
         pass
 
     def do_GET(self):
@@ -297,7 +302,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_file(os.path.join(_HERE, "index.html"), "text/html; charset=utf-8")
             elif path == "/api/drafts":
                 status = (qs.get("status") or [None])[0]
-                topics = qs.get("topics")  # list 或 None
+                topics = qs.get("topics")  # list æˆ– None
                 self._send_json(_clean(list_drafts(status=status, topics=topics)))
             elif path == "/api/feeds":
                 self._send_json(load_feeds_file().get("feeds", []))
@@ -349,7 +354,7 @@ class Handler(BaseHTTPRequestHandler):
                     word_limit=body.get("word_limit") or None,
                     model_id=body.get("model_id") or None))
             elif path == "/api/personas":
-                # 新增或编辑：有 id 则覆盖同 id，否则按 name 生成 id 新增
+                # æ–°å¢žæˆ–ç¼–è¾‘ï¼šæœ‰ id åˆ™è¦†ç›–åŒ idï¼Œå¦åˆ™æŒ‰ name ç”Ÿæˆ id æ–°å¢ž
                 data = load_personas_file()
                 plist = data.setdefault("personas", [])
                 pid = body.get("id") or _slug(body.get("name", ""))
@@ -397,14 +402,15 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     url = f"http://127.0.0.1:{PORT}"
-    print(f"Alter 待审网页已启动： {url}")
-    print("关闭这个窗口即停止。只在本机可访问，不对外公开。")
+    print(f"Alter å¾…å®¡ç½‘é¡µå·²å¯åŠ¨ï¼š {url}")
+    print("å…³é—­è¿™ä¸ªçª—å£å³åœæ­¢ã€‚åªåœ¨æœ¬æœºå¯è®¿é—®ï¼Œä¸å¯¹å¤–å…¬å¼€ã€‚")
     threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\n已停止。")
+        print("\nå·²åœæ­¢ã€‚")
 
 
 if __name__ == "__main__":
     main()
+
