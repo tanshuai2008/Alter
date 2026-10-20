@@ -8,12 +8,20 @@
 credentials
 *.pem
 *.key
+# IAM 策略（含真实 AWS 账号 ID，不提交到公开仓库；只提交 alter-dev-policy.example.json 模板）
+iam/alter-dev-policy.json
+!iam/alter-dev-policy.example.json
+
+# ── 本地打包与备份（不入库）──────────────────────────
+Alter.bundle
+Alter-source/
+temp-*/
 
 # ── SAM / 构建产物（可重新生成，不入库）──────────────
 .aws-sam/
 samconfig-local.toml
 
-# ── 临时输出文件（本次调试产生的）────────────────────
+# ── 临时输出文件（调试产生的）────────────────────
 response.json
 scan_raw.json
 fetch_out.json
